@@ -9,26 +9,40 @@ export interface ToastInfo {
 }
 
 interface QueueContextType {
+  // Original properties/names to support existing UI without breakages
   patients: Patient[];
-  currentToken: string;
   averageWaitTime: number;
+
+  // New spec-specific properties requested
+  queue: Patient[];
+  currentToken: string;
   waitingCount: number;
   completedCount: number;
+  averageConsultationTime: number;
   loading: boolean;
+  error: string | null;
+
+  // Global utilities
   toasts: ToastInfo[];
   showToast: (message: string, type?: 'success' | 'error') => void;
   removeToast: (id: string) => void;
   receptionist: ReceptionistUser | null;
   loginAsReceptionist: (username: string, name: string, room: string) => boolean;
   logoutReceptionist: () => void;
+
+  // Actions
+  fetchQueueStatus: () => Promise<void>;
+  fetchPatients: () => Promise<void>;
   addPatient: (name: string, purpose: string, priority: PriorityLevel) => Promise<Patient>;
   callPatient: (id: string, room: string) => Promise<Patient>;
-  callNextPatient: (room: string) => Promise<Patient | null>;
+  callNextPatient: (room?: string) => Promise<Patient | null>;
   completePatient: (id: string) => Promise<void>;
   noShowPatient: (id: string) => Promise<void>;
   removePatient: (id: string) => Promise<void>;
   updateAverageConsultationTime: (minutes: number) => Promise<void>;
+  updateAverageTime: (minutes: number) => Promise<void>;
   refreshData: () => Promise<void>;
+  
   isOnline: boolean;
   setOnlineStatus: (status: boolean) => void;
   darkMode: boolean;
@@ -79,8 +93,13 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [completedCount, setCompletedCount] = useState<number>(0);
 
   const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
   const [isOnline, setIsOnline] = useState<boolean>(true);
+
+  // Align requested spec variables in absolute sync
+  const queue = patients;
+  const averageConsultationTime = averageWaitTime;
 
   const [receptionist, setReceptionist] = useState<ReceptionistUser | null>(() => {
     const saved = localStorage.getItem('qc_receptionist');
@@ -138,10 +157,11 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem('qc_dark_mode', String(darkMode));
   }, [darkMode]);
 
-  // Synchronizers of API data
-  const refreshData = useCallback(async () => {
+  // 1. fetchPatients - GET /api/patients
+  const fetchPatients = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      // 1. Fetch Patients
       const apiPatients = await apiService.getPatients();
       
       let patientsArray: any[] = [];
@@ -160,20 +180,89 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const mappedPatients = patientsArray.map(transformToPatient);
       setPatients(mappedPatients);
+      setIsOnline(true);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Error fetching patients list';
+      setError(errorMsg);
+      setIsOnline(false);
+      console.error('fetchPatients Error: ', errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-      // 2. Fetch Queue Status
-      try {
-        const status = await apiService.getQueueStatus();
+  // 2. fetchQueueStatus - GET /api/queue/status
+  const fetchQueueStatus = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const status = await apiService.getQueueStatus();
+      setAverageWaitTime(status.averageConsultationTime || 8);
+      setWaitingCount(status.waitingCount !== undefined ? status.waitingCount : 0);
+      setCompletedCount(status.completedCount !== undefined ? status.completedCount : 0);
+      
+      const rawToken = status.currentToken;
+      if (rawToken) {
+        const tStr = String(rawToken);
+        setCurrentToken(tStr.startsWith('QC-') ? tStr : `QC-${tStr}`);
+      } else {
+        setCurrentToken('QC-100');
+      }
+      setIsOnline(true);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Error fetching queue status';
+      setError(errorMsg);
+      setIsOnline(false);
+      console.error('fetchQueueStatus Error: ', errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Synchronizers of API data
+  const refreshData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch both in parallel
+      const [apiPatients, status] = await Promise.all([
+        apiService.getPatients().catch((e) => {
+          console.warn('Patients fetch failed during cycle:', e);
+          return [] as any;
+        }),
+        apiService.getQueueStatus().catch((e) => {
+          console.warn('Status fetch failed during cycle:', e);
+          return null;
+        })
+      ]);
+
+      let patientsArray: any[] = [];
+      if (Array.isArray(apiPatients)) {
+        patientsArray = apiPatients;
+      } else if (apiPatients && typeof apiPatients === 'object') {
+        const anyResponse = apiPatients as any;
+        if (Array.isArray(anyResponse.patients)) {
+          patientsArray = anyResponse.patients;
+        } else if (Array.isArray(anyResponse.data)) {
+          patientsArray = anyResponse.data;
+        } else if (Array.isArray(anyResponse.results)) {
+          patientsArray = anyResponse.results;
+        }
+      }
+
+      const mappedPatients = patientsArray.map(transformToPatient);
+      setPatients(mappedPatients);
+
+      if (status) {
         setAverageWaitTime(status.averageConsultationTime || 8);
-        setWaitingCount(status.waitingCount || Math.max(0, mappedPatients.filter(p => p.status === 'waiting').length));
-        setCompletedCount(status.completedCount || Math.max(0, mappedPatients.filter(p => p.status === 'completed').length));
+        setWaitingCount(status.waitingCount !== undefined ? status.waitingCount : mappedPatients.filter(p => p.status === 'waiting').length);
+        setCompletedCount(status.completedCount !== undefined ? status.completedCount : mappedPatients.filter(p => p.status === 'completed').length);
         
         const rawToken = status.currentToken;
         if (rawToken) {
           const tStr = String(rawToken);
           setCurrentToken(tStr.startsWith('QC-') ? tStr : `QC-${tStr}`);
         } else {
-          // fallback if empty
           const callingPtList = mappedPatients.filter(p => p.status === 'calling');
           if (callingPtList.length > 0) {
             setCurrentToken(callingPtList[callingPtList.length - 1].ticketNumber);
@@ -181,7 +270,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setCurrentToken('QC-100');
           }
         }
-      } catch (statusErr) {
+      } else {
         // Fallback calculations if status endpoint is offline but patients endpoint is working
         const activeCalling = mappedPatients.filter(p => p.status === 'calling');
         setCurrentToken(activeCalling.length > 0 ? activeCalling[activeCalling.length - 1].ticketNumber : 'QC-100');
@@ -192,9 +281,12 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsOnline(true);
     } catch (err: any) {
       setIsOnline(false);
+      setError(err.message || 'Synchronization Error');
       console.error('Queue API Synchronization Error: ', err.message);
+    } finally {
+      setLoading(false);
     }
-  }, [showToast]);
+  }, []);
 
   // Auto polling updates every 5.5 seconds to sync Live displays seamlessly
   useEffect(() => {
@@ -242,10 +334,12 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // POST /api/queue/next
-  const callNextPatient = async (room: string): Promise<Patient | null> => {
+  const callNextPatient = async (room?: string): Promise<Patient | null> => {
     setLoading(true);
+    setError(null);
     try {
-      const apiPt = await apiService.callNextPatient(room);
+      const activeRoom = room || receptionist?.room || 'Examination Room 1';
+      const apiPt = await apiService.callNextPatient(activeRoom);
       if (!apiPt) {
         showToast('Standby queue is currently empty.', 'error');
         return null;
@@ -256,6 +350,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return converted;
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'No next patient waiting.';
+      setError(msg);
       showToast(msg, 'error');
       return null;
     } finally {
@@ -266,12 +361,14 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // PUT /api/patients/:id - mark as completed
   const completePatient = async (id: string): Promise<void> => {
     setLoading(true);
+    setError(null);
     try {
       await apiService.updatePatientStatus(id, { status: 'completed' });
       await refreshData();
       showToast('Patient session completed successfully.', 'success');
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Error marking patient session complete.';
+      setError(msg);
       showToast(msg, 'error');
     } finally {
       setLoading(false);
@@ -281,12 +378,14 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // PUT /api/patients/:id - mark as no-show
   const noShowPatient = async (id: string): Promise<void> => {
     setLoading(true);
+    setError(null);
     try {
       await apiService.updatePatientStatus(id, { status: 'no-show' });
       await refreshData();
       showToast('Patient marked as absent/no-show.', 'success');
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Error marking no-show status.';
+      setError(msg);
       showToast(msg, 'error');
     } finally {
       setLoading(false);
@@ -296,12 +395,14 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // DELETE /api/patients/:id
   const removePatient = async (id: string): Promise<void> => {
     setLoading(true);
+    setError(null);
     try {
       await apiService.deletePatient(id);
       await refreshData();
       showToast('Patient registration cancelled successfully.', 'success');
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Error removing patient from list.';
+      setError(msg);
       showToast(msg, 'error');
     } finally {
       setLoading(false);
@@ -309,35 +410,44 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // PUT /api/queue/average-time
-  const updateAverageConsultationTime = async (minutes: number): Promise<void> => {
+  const updateAverageTime = async (minutes: number): Promise<void> => {
     setLoading(true);
+    setError(null);
     try {
       await apiService.updateAverageTime(minutes);
       await refreshData();
       showToast(`Target average consultation set to ${minutes}m.`, 'success');
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Error updating average time.';
+      setError(msg);
       showToast(msg, 'error');
     } finally {
       setLoading(false);
     }
   };
 
+  const updateAverageConsultationTime = updateAverageTime;
+
   return (
     <QueueContext.Provider
       value={{
         patients,
-        currentToken,
         averageWaitTime,
+        queue,
+        currentToken,
         waitingCount,
         completedCount,
+        averageConsultationTime,
         loading,
+        error,
         toasts,
         showToast,
         removeToast,
         receptionist,
         loginAsReceptionist,
         logoutReceptionist,
+        fetchQueueStatus,
+        fetchPatients,
         addPatient,
         callPatient,
         callNextPatient,
@@ -345,6 +455,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         noShowPatient,
         removePatient,
         updateAverageConsultationTime,
+        updateAverageTime,
         refreshData,
         isOnline,
         setOnlineStatus: setIsOnline,
