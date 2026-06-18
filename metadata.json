@@ -1,0 +1,6 @@
+{
+  "name": "Queue Cure '26",
+  "description": "A modern, mobile-first queue management interface designed for medical receptionist intake, patient wait-time tracking, and real-time lobby display boards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

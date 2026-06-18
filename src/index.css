@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Outfit", var(--font-sans);
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Custom palette matching Queue Cure '26 specifications */
+  --color-qc-primary: #2563EB;
+  --color-qc-secondary: #DBEAFE;
+  --color-qc-success: #22C55E;
+  --color-qc-danger: #EF4444;
+  --color-qc-bg-light: #F8FAFC;
+  --color-qc-bg-dark: #0F172A;
+
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-ping-slow: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Custom styles for professional mobile app appearance */
+html, body {
+  background-color: #F1F5F9;
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Dark mode HTML styling */
+html.dark, html.dark body {
+  background-color: #0B0F19;
+}
+
+/* Perfect iOS-like smooth scrollbar hiding */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Pulse ringing animation for called patient */
+@keyframes ring-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7);
+  }
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 0 0 10px rgba(37, 99, 235, 0);
+  }
+}
+
+.animate-ring-pulse {
+  animation: ring-pulse 1.8s infinite ease-in-out;
+}
