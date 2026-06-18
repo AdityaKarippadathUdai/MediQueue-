@@ -165,9 +165,6 @@ export const ReceptionistLogin: React.FC = () => {
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   4-Digit Access PIN
                 </label>
-                <div className="text-[10px] text-blue-500 font-semibold uppercase tracking-wider bg-blue-550/10 px-2 py-0.5 rounded-md">
-                  Demo Key: 1234
-                </div>
               </div>
 
               <div className="relative">
