@@ -133,13 +133,13 @@ export const Header: React.FC = () => {
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className={`relative w-full max-w-sm rounded-[24px] border p-5 shadow-2xl z-10 text-left ${
+              className={`relative w-full max-w-sm rounded-[24px] border p-5 shadow-2xl z-10 text-left flex flex-col max-h-[85vh] sm:max-h-[720px] ${
                 darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
               }`}
               id="global-settings-modal"
             >
               {/* Header */}
-              <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-3 flex-shrink-0">
                 <h3 className="font-sans font-black text-slate-900 dark:text-white text-[15px] flex items-center gap-2">
                   <Settings className="w-4.5 h-4.5 text-blue-500 animate-spin-slow" />
                   <span>Queue Cure Settings</span>
@@ -152,8 +152,8 @@ export const Header: React.FC = () => {
                 </button>
               </div>
 
-              {/* Settings Body Options */}
-              <div className="space-y-4">
+              {/* Settings Body Options with scroll containment */}
+              <div className="space-y-4 overflow-y-auto pr-1.5 flex-1 min-h-0 scrollbar-thin">
                 
                 {/* Theme toggle option */}
                 <div className="flex items-center justify-between py-1">
@@ -163,10 +163,10 @@ export const Header: React.FC = () => {
                   </div>
                   <button
                     onClick={toggleDarkMode}
-                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                       darkMode 
                         ? 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20' 
-                        : 'bg-slate-100 text-slate-705 hover:bg-slate-200'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
                     {darkMode ? '🌙 Dark mode' : '☀️ Light mode'}
@@ -212,6 +212,16 @@ export const Header: React.FC = () => {
                   </div>
                 </div>
 
+              </div>
+
+              {/* Explicit bottom footer action close button */}
+              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex-shrink-0">
+                <button
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="w-full py-2.5 rounded-xl text-center text-xs font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white transition-all shadow-md shadow-blue-500/10 cursor-pointer"
+                >
+                  Close Settings
+                </button>
               </div>
             </motion.div>
           </div>
