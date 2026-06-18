@@ -14,14 +14,14 @@ export interface Patient {
   status: PatientStatus;
   joinedAt: string;
   calledAt?: string;
-  estimatedWaitMinutes: number;
+  estimatedWaitMinutes: number | null;
   priority: PriorityLevel;
   assignedRoom?: string;
 }
 
 export interface QueueStats {
   waitingCount: number;
-  averageWaitTime: number; // in minutes
+  averageWaitTime: number | null; // in minutes
   currentCallingTicket: string | null;
   completedTodayCount: number;
 }
@@ -32,3 +32,34 @@ export interface ReceptionistUser {
   role: 'Receptionist';
   room: string;
 }
+
+// ==========================================
+// INTEGRATION INTERFACES
+// ==========================================
+
+export interface PatientData {
+  _id: string;
+  name: string;
+  token: number;
+  status: string;
+  joinedAt: string;
+  completedAt: string | null;
+}
+
+export interface QueueData {
+  patients: Patient[];
+  currentToken: string | null;
+  waitingCount: number;
+  completedCount: number;
+  averageConsultationTime: number | null;
+}
+
+export interface QueueSettings {
+  averageConsultationTime: number | null;
+}
+
+export interface ConnectionStatus {
+  isConnected: boolean;
+  status: 'connected' | 'connecting' | 'disconnected';
+}
+

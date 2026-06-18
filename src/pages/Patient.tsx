@@ -65,36 +65,14 @@ export const Patient: React.FC = () => {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Interactive local simulation variables (so users can dry-run any scenario)
-  const [simulatedCurrentToken, setSimulatedCurrentToken] = useState<number>(104);
-  const [simulatedStatus, setSimulatedStatus] = useState<'Waiting' | 'Being Called' | 'Completed'>('Waiting');
-  const [simulatedPatientsAhead, setSimulatedPatientsAhead] = useState<number>(4);
-  const [simulatedWaitMinutes, setSimulatedWaitMinutes] = useState<number>(32);
-  const [isSimulating, setIsSimulating] = useState<boolean>(false);
-
-  // Keep a mock registration time that persists for the session on raw simulated tokens
-  const [simulatedJoinTime, setSimulatedJoinTime] = useState<string>('');
-
-  // Auto initialize simulated join time
-  useEffect(() => {
-    if (!simulatedJoinTime) {
-      const now = new Date();
-      now.setMinutes(now.getMinutes() - 20); // joined 20 mins ago
-      setSimulatedJoinTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    }
-  }, [simulatedJoinTime]);
-
-  // Load history from localStorage on mount
+  // Load history from localStorage on mount (no mock token seeds)
   useEffect(() => {
     try {
       const stored = localStorage.getItem(RECENT_TOKENS_KEY);
       if (stored) {
         setRecentTokens(JSON.parse(stored));
       } else {
-        // Seed some plausible sample tokens if empty to show quick switching immediately
-        const initialSeeds = ['108', '112', '125'];
-        setRecentTokens(initialSeeds);
-        localStorage.setItem(RECENT_TOKENS_KEY, JSON.stringify(initialSeeds));
+        setRecentTokens([]);
       }
     } catch (e) {
       console.warn('Could not load recent token history:', e);
@@ -138,48 +116,6 @@ export const Patient: React.FC = () => {
     }
   }, [activeTokenId]);
 
-  // Sync simulation values with live DB states, but allow manual simulation overrides!
-  useEffect(() => {
-    if (activeTokenId) {
-      const cleanTokenNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10) || 108;
-      
-      if (matchedPatient) {
-        // Sync of Live DB
-        if (!isSimulating) {
-          // Status sync
-          if (matchedPatient.status === 'calling') {
-            setSimulatedStatus('Being Called');
-          } else if (matchedPatient.status === 'completed') {
-            setSimulatedStatus('Completed');
-          } else {
-            setSimulatedStatus('Waiting');
-          }
-
-          // Live Wait stats sync
-          const pos = getQueuePosition(matchedPatient);
-          setSimulatedPatientsAhead(pos > 0 ? pos - 1 : 0);
-          setSimulatedWaitMinutes(matchedPatient.estimatedWaitMinutes || (pos * (averageWaitTime || 8)));
-          
-          // Current called token sync
-          const liveTokenNum = parseInt(liveCurrentToken.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10);
-          if (!isNaN(liveTokenNum)) {
-            setSimulatedCurrentToken(liveTokenNum);
-          } else {
-            setSimulatedCurrentToken(Math.max(100, cleanTokenNum - 4));
-          }
-        }
-      } else {
-        // If simulated dummy token of user request (like 108 or 112)
-        if (!isSimulating) {
-          setSimulatedCurrentToken(Math.max(100, cleanTokenNum - 4));
-          setSimulatedPatientsAhead(4);
-          setSimulatedWaitMinutes(32);
-          setSimulatedStatus('Waiting');
-        }
-      }
-    }
-  }, [activeTokenId, matchedPatient, liveCurrentToken, isSimulating]);
-
   const getQueuePosition = (patientObj: PatientType) => {
     if (patientObj.status !== 'waiting') return 0;
     const waitingPatients = patients.filter(p => p.status === 'waiting');
@@ -195,7 +131,41 @@ export const Patient: React.FC = () => {
     return index !== -1 ? index + 1 : 0;
   };
 
-  const patientPos = matchedPatient ? getQueuePosition(matchedPatient) : (simulatedPatientsAhead + 1);
+  const patientPos = matchedPatient ? getQueuePosition(matchedPatient) : 0;
+
+  // Real-time live derived stats from clinic DB
+  const currentLiveStatus: 'Waiting' | 'Being Called' | 'Completed' | 'Absent/No Show' | 'Inactive' = (() => {
+    if (!matchedPatient) return 'Waiting';
+    if (matchedPatient.status === 'calling') return 'Being Called';
+    if (matchedPatient.status === 'completed') return 'Completed';
+    if (matchedPatient.status === 'no-show') return 'Absent/No Show';
+    return 'Waiting';
+  })();
+
+  const currentLiveServingToken: number = (() => {
+    if (liveCurrentToken) {
+      const cleanNum = parseInt(liveCurrentToken.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(cleanNum)) return cleanNum;
+    }
+    if (activeTokenId) {
+      const cleanTokenNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10);
+      return Math.max(100, (cleanTokenNum || 104) - 4);
+    }
+    return 100;
+  })();
+
+  const currentLivePatientsAhead: number = (() => {
+    if (!matchedPatient || matchedPatient.status !== 'waiting') return 0;
+    return patientPos > 0 ? patientPos - 1 : 0;
+  })();
+
+  const currentLiveWaitMinutes: number = (() => {
+    if (!matchedPatient || matchedPatient.status !== 'waiting') return 0;
+    if (matchedPatient.estimatedWaitMinutes !== null && matchedPatient.estimatedWaitMinutes !== undefined) {
+      return matchedPatient.estimatedWaitMinutes;
+    }
+    return patientPos * (averageWaitTime || 8);
+  })();
 
   // Active validation on tracker submission
   const handleTrackToken = (e: React.FormEvent) => {
@@ -221,14 +191,12 @@ export const Patient: React.FC = () => {
     setTimeout(() => {
       setSearchSuccess(false);
       setSearchToken('');
-      setIsSimulating(false); // Reset simulation state for pristine tracking
       navigate(`/patient/${clean}`);
     }, 600);
   };
 
   // Immediate selection of a past tracked token
   const handleQuickReopen = (tk: string) => {
-    setIsSimulating(false);
     navigate(`/patient/${tk}`);
   };
 
@@ -282,7 +250,6 @@ export const Patient: React.FC = () => {
     // Successful scan countdown animation
     setTimeout(() => {
       closeCameraScanner();
-      setIsSimulating(false);
       navigate(`/patient/${simToken}`);
     }, 1200);
   };
@@ -290,7 +257,12 @@ export const Patient: React.FC = () => {
   // Calculations for display times
   const getSimulatedEstimatedCallTime = () => {
     const now = new Date();
-    now.setMinutes(now.getMinutes() + (simulatedStatus === 'Completed' ? 0 : simulatedWaitMinutes));
+    if (matchedPatient) {
+      const join = new Date(matchedPatient.joinedAt);
+      join.setMinutes(join.getMinutes() + (matchedPatient.status === 'completed' ? 0 : currentLiveWaitMinutes));
+      return join.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    now.setMinutes(now.getMinutes() + currentLiveWaitMinutes);
     return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
@@ -298,7 +270,9 @@ export const Patient: React.FC = () => {
     if (matchedPatient) {
       return new Date(matchedPatient.joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    return simulatedJoinTime || '09:12 PM';
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - 20);
+    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   // Generate the Step Sequence for Queue Progress visualizer e.g., 104 -> 105 -> ... -> 108
@@ -306,7 +280,7 @@ export const Patient: React.FC = () => {
     if (!activeTokenId) return [];
     
     const trackerNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10) || 108;
-    const startNum = simulatedCurrentToken;
+    const startNum = currentLiveServingToken;
 
     if (startNum >= trackerNum) {
       return [trackerNum];
@@ -329,13 +303,13 @@ export const Patient: React.FC = () => {
 
   // Calculate percentage for progress fill
   const calculateProgressPercent = () => {
-    if (simulatedStatus === 'Completed') return 100;
-    if (simulatedStatus === 'Being Called') return 80;
+    if (currentLiveStatus === 'Completed') return 100;
+    if (currentLiveStatus === 'Being Called') return 80;
     
     // Waiting: evaluate based on how close simulated current serving is to tracked token
     if (!activeTokenId) return 20;
     const trackerNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10) || 108;
-    const startNum = simulatedCurrentToken;
+    const startNum = currentLiveServingToken;
     if (startNum >= trackerNum) return 80;
 
     const currentDistance = trackerNum - startNum;
@@ -367,7 +341,6 @@ export const Patient: React.FC = () => {
             <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800 pb-3">
               <button 
                 onClick={() => {
-                  setIsSimulating(false);
                   navigate('/patient');
                 }}
                 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-blue-600 transition-colors cursor-pointer group"
@@ -396,21 +369,21 @@ export const Patient: React.FC = () => {
               
               {/* STATUS BAR HEADER ACCENT */}
               <div className={`p-4 text-center transition-all relative ${
-                simulatedStatus === 'Being Called'
+                currentLiveStatus === 'Being Called'
                   ? 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white'
-                  : simulatedStatus === 'Completed'
+                  : currentLiveStatus === 'Completed'
                     ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white'
                     : 'bg-slate-100 dark:bg-slate-900 border-b border-slate-150 dark:border-slate-800'
               }`}>
                 {/* Simulated status ribbon tag */}
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase shadow-xs bg-white/10 text-white">
-                  {simulatedStatus === 'Being Called' && <BellRing className="w-3.5 h-3.5 animate-bounce text-amber-300" />}
-                  {simulatedStatus === 'Completed' && <Check className="w-3.5 h-3.5 text-white" />}
-                  {simulatedStatus === 'Waiting' && <Clock className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />}
+                  {currentLiveStatus === 'Being Called' && <BellRing className="w-3.5 h-3.5 animate-bounce text-amber-300" />}
+                  {currentLiveStatus === 'Completed' && <Check className="w-3.5 h-3.5 text-white" />}
+                  {currentLiveStatus === 'Waiting' && <Clock className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />}
                   <span className={`${
-                    simulatedStatus === 'Waiting' ? 'text-slate-700 dark:text-slate-200' : ''
+                    currentLiveStatus === 'Waiting' ? 'text-slate-700 dark:text-slate-200' : ''
                   }`}>
-                    {simulatedStatus}
+                    {currentLiveStatus}
                   </span>
                 </div>
 
@@ -422,7 +395,7 @@ export const Patient: React.FC = () => {
                     QC-{activeTokenId.toUpperCase()}
                   </span>
                   <p className="text-[11px] font-medium opacity-80 mt-1">
-                    Patient Name: <strong className="font-extrabold">{matchedPatient?.name || 'Rahul Sharma'}</strong>
+                    Patient Name: <strong className="font-extrabold">{matchedPatient?.name || 'Walk-in / Standby Client'}</strong>
                   </p>
                 </div>
               </div>
@@ -435,7 +408,7 @@ export const Patient: React.FC = () => {
                     Now Serving
                   </span>
                   <strong className="font-mono text-lg font-black text-blue-600 dark:text-blue-400 animate-pulse">
-                    QC-{simulatedCurrentToken}
+                    QC-{currentLiveServingToken}
                   </strong>
                 </div>
 
@@ -445,7 +418,7 @@ export const Patient: React.FC = () => {
                     Patients Ahead
                   </span>
                   <strong className="font-sans text-lg font-black text-slate-800 dark:text-white">
-                    {simulatedStatus === 'Waiting' ? simulatedPatientsAhead : 0}
+                    {currentLiveStatus === 'Waiting' ? currentLivePatientsAhead : 0}
                   </strong>
                 </div>
 
@@ -455,7 +428,7 @@ export const Patient: React.FC = () => {
                     Estimated Wait
                   </span>
                   <strong className="font-sans text-lg font-black text-emerald-500">
-                    {simulatedStatus === 'Waiting' ? `${simulatedWaitMinutes}m` : '0m'}
+                    {currentLiveStatus === 'Waiting' ? `${currentLiveWaitMinutes}m` : '0m'}
                   </strong>
                 </div>
               </div>
@@ -470,7 +443,7 @@ export const Patient: React.FC = () => {
                       <span>Queue Progress</span>
                     </span>
                     <span className="text-[10px] font-semibold text-slate-500">
-                      Current Token: {simulatedCurrentToken} of {activeTokenId}
+                      Current Token: {currentLiveServingToken} of {activeTokenId}
                     </span>
                   </div>
 
@@ -480,19 +453,19 @@ export const Patient: React.FC = () => {
                       {/* Connection Line Behind */}
                       <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-1 bg-slate-200 dark:bg-slate-800 z-0 rounded-full overflow-hidden">
                         <motion.div 
-                          initial={{ width: '0%' }}
-                          animate={{ width: `${calculateProgressPercent()}%` }}
-                          transition={{ duration: 0.6, ease: 'easeInOut' }}
-                          className="h-full bg-blue-600 rounded-full" 
+                           initial={{ width: '0%' }}
+                           animate={{ width: `${calculateProgressPercent()}%` }}
+                           transition={{ duration: 0.6, ease: 'easeInOut' }}
+                           className="h-full bg-blue-600 rounded-full" 
                         />
                       </div>
 
                       {/* Map through Progress Steps */}
                       {progressSteps.map((stepNum, idx) => {
                         const isNumber = typeof stepNum === 'number';
-                        const isCurrent = isNumber && stepNum === simulatedCurrentToken;
+                        const isCurrent = isNumber && stepNum === currentLiveServingToken;
                         const isMyToken = isNumber && String(stepNum) === activeTokenId.replace(/qc-/i, '');
-                        const isPassed = isNumber && stepNum < simulatedCurrentToken;
+                        const isPassed = isNumber && stepNum < currentLiveServingToken;
 
                         return (
                           <div key={idx} className="flex flex-col items-center relative z-10">
@@ -561,7 +534,7 @@ export const Patient: React.FC = () => {
                     {/* Item 2: Waiting In Queue */}
                     <div className="flex items-start gap-4 text-left relative">
                       <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
-                        simulatedStatus === 'Waiting' || simulatedStatus === 'Being Called' || simulatedStatus === 'Completed'
+                        currentLiveStatus === 'Waiting' || currentLiveStatus === 'Being Called' || currentLiveStatus === 'Completed'
                           ? 'bg-emerald-500 border-emerald-500 text-white'
                           : 'bg-white border-slate-200 text-slate-450 dark:bg-slate-900 dark:border-slate-800'
                       }`}>
@@ -580,16 +553,16 @@ export const Patient: React.FC = () => {
                     {/* Item 3: Being Called */}
                     <div className="flex items-start gap-4 text-left relative">
                       <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
-                        simulatedStatus === 'Being Called' || simulatedStatus === 'Completed'
+                        currentLiveStatus === 'Being Called' || currentLiveStatus === 'Completed'
                           ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20'
                           : 'bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800'
                       }`}>
-                        {simulatedStatus === 'Being Called' ? (
+                        {currentLiveStatus === 'Being Called' ? (
                           <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                           </span>
-                        ) : simulatedStatus === 'Completed' ? (
+                        ) : currentLiveStatus === 'Completed' ? (
                           <Check className="w-3.5 h-3.5" />
                         ) : (
                           <span className="text-[8px] font-bold">3</span>
@@ -597,12 +570,12 @@ export const Patient: React.FC = () => {
                       </div>
                       <div>
                         <h5 className={`text-[11.5px] font-extrabold ${
-                          simulatedStatus === 'Being Called' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-800 dark:text-slate-200'
+                          currentLiveStatus === 'Being Called' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-800 dark:text-slate-200'
                         }`}>
-                          {simulatedStatus === 'Being Called' ? '🛎️ Being Called Now' : '○ Being Called'}
+                          {currentLiveStatus === 'Being Called' ? '🛎️ Being Called Now' : '○ Being Called'}
                         </h5>
                         <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
-                          {simulatedStatus === 'Being Called' 
+                          {currentLiveStatus === 'Being Called' 
                             ? 'Please proceed immediately to Consulting Room B.' 
                             : 'Patient called by clinician for face-to-face diagnosis.'}
                         </p>
@@ -612,11 +585,11 @@ export const Patient: React.FC = () => {
                     {/* Item 4: Consultation Complete */}
                     <div className="flex items-start gap-4 text-left relative">
                       <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
-                        simulatedStatus === 'Completed'
+                        currentLiveStatus === 'Completed'
                           ? 'bg-emerald-500 border-emerald-500 text-white'
                           : 'bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800'
                       }`}>
-                        {simulatedStatus === 'Completed' ? (
+                        {currentLiveStatus === 'Completed' ? (
                           <Check className="w-3.5 h-3.5" />
                         ) : (
                           <span className="text-[8px] font-bold">4</span>
@@ -686,108 +659,7 @@ export const Patient: React.FC = () => {
               </div>
             </div>
 
-            {/* ----------------- INTERACTIVE SIMULATOR CARD PANEL ----------------- */}
-            <div className={`p-4.5 rounded-3.5xl border border-dashed text-left transition-all ${
-              darkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-blue-50/25 border-blue-150'
-            }`}>
-              <div className="flex items-center justify-between mb-3.5">
-                <span className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-blue-500" />
-                  <span>Interactive Simulation Lounge</span>
-                </span>
-                
-                <span className="text-[8px] bg-blue-500 text-white px-2 py-0.5 rounded-full font-black uppercase">
-                  Sandbox Active
-                </span>
-              </div>
 
-              <p className="text-[11px] text-slate-500 mb-4 leading-normal">
-                Adjust clinic parameters below to watch timelines, progress bars, calltimes, and statuses transition instantly!
-              </p>
-
-              <div className="space-y-4">
-                {/* 1. Status Stepper */}
-                <div className="space-y-1.5">
-                  <label className="text-[9.5px] font-black uppercase text-slate-450 dark:text-slate-500">
-                    Switch Queue Status
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {(['Waiting', 'Being Called', 'Completed'] as const).map(st => (
-                      <button
-                        key={st}
-                        onClick={() => {
-                          setIsSimulating(true);
-                          setSimulatedStatus(st);
-                        }}
-                        className={`py-2 text-[10.5px] font-extrabold rounded-xl transition-all cursor-pointer ${
-                          simulatedStatus === st
-                            ? 'bg-blue-600 text-white shadow-xs'
-                            : darkMode
-                              ? 'bg-slate-950 hover:bg-slate-900 text-slate-400 border border-slate-800'
-                              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-                        }`}
-                      >
-                        {st}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 2. Slide Controls */}
-                <div className="grid grid-cols-2 gap-3.5 pt-1">
-                  {/* Current Served Token Slider */}
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase flex justify-between">
-                      <span>Currently Serving</span>
-                      <strong className="text-blue-500 font-mono">QC-{simulatedCurrentToken}</strong>
-                    </label>
-                    <input
-                      type="range"
-                      min="100"
-                      max={String(parseInt(activeTokenId.replace(/qc-/i, ''), 10) + 1 || 115)}
-                      value={simulatedCurrentToken}
-                      onChange={(e) => {
-                        setIsSimulating(true);
-                        setSimulatedCurrentToken(parseInt(e.target.value));
-                      }}
-                      className="w-full accent-blue-600 h-1 bg-slate-250 dark:bg-slate-800 rounded-lg cursor-pointer"
-                    />
-                  </div>
-
-                  {/* Patients Ahead Slider */}
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase flex justify-between">
-                      <span>Patients Ahead</span>
-                      <strong className="text-indigo-500 font-sans">{simulatedPatientsAhead}</strong>
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="15"
-                      value={simulatedPatientsAhead}
-                      onChange={(e) => {
-                        setIsSimulating(true);
-                        setSimulatedPatientsAhead(parseInt(e.target.value));
-                      }}
-                      className="w-full accent-indigo-600 h-1 bg-slate-250 dark:bg-slate-800 rounded-lg cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                {/* Reset button to sync back with standard list defaults */}
-                <button
-                  type="button"
-                  onClick={() => setIsSimulating(false)}
-                  className={`w-full py-2 text-[9.5px] font-black uppercase tracking-wider rounded-xl text-center border cursor-pointer transition-colors ${
-                    darkMode
-                      ? 'border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-400'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
-                  }`}
-                >
-                  🔄 Reset Sandbox (Sync with Real Clinic List)
-                </button>
-              </div>
-            </div>
 
             {/* QUICK PASSPORT SWITCHER Pill Bar */}
             {recentTokens.length > 0 && (

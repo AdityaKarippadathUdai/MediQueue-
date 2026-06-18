@@ -8,7 +8,7 @@ import { usePWAInstall } from '../hooks/usePWAInstall';
 import { PWAInstructionsModal } from './PWAInstallComponents';
 
 export const Header: React.FC = () => {
-  const { darkMode, toggleDarkMode, resetQueue, receptionist, logoutReceptionist } = useQueue();
+  const { darkMode, toggleDarkMode, receptionist, logoutReceptionist } = useQueue();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -23,12 +23,6 @@ export const Header: React.FC = () => {
     const result = await installApp();
     if (result.outcome === 'fallback') {
       setShowGuide(true);
-    }
-  };
-
-  const handleReset = () => {
-    if (window.confirm('Reset the queue state back to mock admissions?')) {
-      resetQueue();
     }
   };
 
@@ -85,17 +79,6 @@ export const Header: React.FC = () => {
 
         {/* Action Widgets */}
         <div className="flex items-center gap-2">
-          {/* Reset simulation helper helpful for review */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={handleReset}
-            className={`p-1.5 rounded-xl transition-colors ${darkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
-            title="Reset to default mock queue"
-            id="header-reset-state-button"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </motion.button>
-
           {/* Theme custom pill toggle */}
           <motion.button
             whileTap={{ scale: 0.9 }}
@@ -187,23 +170,6 @@ export const Header: React.FC = () => {
                     }`}
                   >
                     {darkMode ? '🌙 Dark mode' : '☀️ Light mode'}
-                  </button>
-                </div>
-
-                {/* Queue context state resetting */}
-                <div className="flex items-center justify-between py-1 border-t border-slate-100 dark:border-slate-850 pt-3">
-                  <div>
-                    <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">Reset Simulation</span>
-                    <span className="text-[10px] text-slate-400 font-medium">Revert to default mock database</span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      handleReset();
-                      setIsSettingsOpen(false);
-                    }}
-                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-all cursor-pointer"
-                  >
-                    Revet DB
                   </button>
                 </div>
 

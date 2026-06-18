@@ -716,7 +716,8 @@ export const Receptionist: React.FC = () => {
                     <motion.button
                       whileTap={{ scale: 0.96 }}
                       type="submit"
-                      className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-750 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider shadow-md shadow-blue-500/15 flex items-center justify-center gap-1.5 cursor-pointer"
+                      style={{ backgroundColor: '#163858' }}
+                      className="px-6 py-3.5 rounded-2xl text-white font-extrabold text-xs uppercase tracking-wider shadow-md hover:brightness-110 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
                     >
                       <Plus className="w-4 h-4" />
                       <span>Add to Standby waitlist</span>

@@ -16,14 +16,14 @@ interface QueueContextType {
 
   // Original properties/names to support existing UI without breakages
   patients: Patient[];
-  averageWaitTime: number;
+  averageWaitTime: number | null;
 
   // New spec-specific properties requested
   queue: Patient[];
-  currentToken: string;
+  currentToken: string | null;
   waitingCount: number;
   completedCount: number;
-  averageConsultationTime: number;
+  averageConsultationTime: number | null;
   loading: boolean;
   error: string | null;
 
@@ -95,8 +95,8 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // State variables
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [currentToken, setCurrentToken] = useState<string>('QC-100');
-  const [averageWaitTime, setAverageWaitTime] = useState<number>(8);
+  const [currentToken, setCurrentToken] = useState<string | null>(null);
+  const [averageWaitTime, setAverageWaitTime] = useState<number | null>(null);
   const [waitingCount, setWaitingCount] = useState<number>(0);
   const [completedCount, setCompletedCount] = useState<number>(0);
 
@@ -205,7 +205,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setError(null);
     try {
       const status = await apiService.getQueueStatus();
-      setAverageWaitTime(status.averageConsultationTime || 8);
+      setAverageWaitTime(status.averageConsultationTime !== undefined && status.averageConsultationTime !== null ? status.averageConsultationTime : null);
       setWaitingCount(status.waitingCount !== undefined ? status.waitingCount : 0);
       setCompletedCount(status.completedCount !== undefined ? status.completedCount : 0);
       
@@ -214,7 +214,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const tStr = String(rawToken);
         setCurrentToken(tStr.startsWith('QC-') ? tStr : `QC-${tStr}`);
       } else {
-        setCurrentToken('QC-100');
+        setCurrentToken(null);
       }
       setIsOnline(true);
     } catch (err: any) {
@@ -262,7 +262,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setPatients(mappedPatients);
 
       if (status) {
-        setAverageWaitTime(status.averageConsultationTime || 8);
+        setAverageWaitTime(status.averageConsultationTime !== undefined && status.averageConsultationTime !== null ? status.averageConsultationTime : null);
         setWaitingCount(status.waitingCount !== undefined ? status.waitingCount : mappedPatients.filter(p => p.status === 'waiting').length);
         setCompletedCount(status.completedCount !== undefined ? status.completedCount : mappedPatients.filter(p => p.status === 'completed').length);
         
@@ -275,13 +275,13 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (callingPtList.length > 0) {
             setCurrentToken(callingPtList[callingPtList.length - 1].ticketNumber);
           } else {
-            setCurrentToken('QC-100');
+            setCurrentToken(null);
           }
         }
       } else {
         // Fallback calculations if status endpoint is offline but patients endpoint is working
         const activeCalling = mappedPatients.filter(p => p.status === 'calling');
-        setCurrentToken(activeCalling.length > 0 ? activeCalling[activeCalling.length - 1].ticketNumber : 'QC-100');
+        setCurrentToken(activeCalling.length > 0 ? activeCalling[activeCalling.length - 1].ticketNumber : null);
         setWaitingCount(mappedPatients.filter(p => p.status === 'waiting').length);
         setCompletedCount(mappedPatients.filter(p => p.status === 'completed').length);
       }

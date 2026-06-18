@@ -7,6 +7,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 // Static simulation list of clinic tokens to cycle through in Demo Preset mode
+// TODO: Real-time Socket.IO / REST API integration points for queue displays
 interface PresetCall {
   ticketNumber: string;
   name: string;
@@ -15,19 +16,13 @@ interface PresetCall {
   priority: 'normal' | 'urgent';
 }
 
-const PRESET_CALLS: PresetCall[] = [
-  { ticketNumber: 'QC-104', name: 'Rahul Sharma', room: 'Consultation Room 1', purpose: 'General Wellness Check', priority: 'normal' },
-  { ticketNumber: 'QC-105', name: 'Priya Patel', room: 'Pediatrics Room 3', purpose: 'Immunization / Jab', priority: 'normal' },
-  { ticketNumber: 'QC-106', name: 'Amit Kumar', room: 'Cardiac Diagnostics', purpose: 'Echocardiogram', priority: 'urgent' },
-  { ticketNumber: 'QC-107', name: 'Sneha Reddy', room: 'Physiotherapy Lab', purpose: 'Post-Injury Rehab', priority: 'normal' },
-  { ticketNumber: 'QC-108', name: 'Arjun Sen', room: 'Consultation Room 2', purpose: 'Acute Migraine Study', priority: 'urgent' },
-];
+const PRESET_CALLS: PresetCall[] = [];
 
 export const Display: React.FC = () => {
-  const { patients, darkMode } = useQueue();
+  const { patients, darkMode, loading, error } = useQueue();
 
-  // Screen layout modes
-  const [tvSource, setTvSource] = useState<'preset' | 'live'>('preset');
+  // Screen layout modes - default to 'live' feed for real backend integration
+  const [tvSource, setTvSource] = useState<'preset' | 'live'>('live');
   const [presetIndex, setPresetIndex] = useState<number>(0);
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(true);
   const [playBuzzerRipple, setPlayBuzzerRipple] = useState(false);
@@ -83,15 +78,6 @@ export const Display: React.FC = () => {
       return null;
     }
   })();
-
-  // Autoplay Preset Demonstration Cycle every 12 seconds
-  useEffect(() => {
-    if (tvSource !== 'preset') return;
-    const interval = setInterval(() => {
-      setPresetIndex((prev) => (prev + 1) % PRESET_CALLS.length);
-    }, 12000);
-    return () => clearInterval(interval);
-  }, [tvSource]);
 
   // Audio beeping sound synthesizer (Chime sound)
   const triggerAudioBeep = () => {
