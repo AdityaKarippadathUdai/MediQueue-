@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Patient, PatientStatus, PriorityLevel, ReceptionistUser } from '../types';
 import * as apiService from '../services/api';
+import { useSocket, SocketStatus } from '../hooks/useSocket';
 
 export interface ToastInfo {
   id: string;
@@ -9,6 +10,10 @@ export interface ToastInfo {
 }
 
 interface QueueContextType {
+  // Socket integration details
+  socketStatus: SocketStatus;
+  isConnected: boolean;
+
   // Original properties/names to support existing UI without breakages
   patients: Patient[];
   averageWaitTime: number;
@@ -85,6 +90,9 @@ export const transformToPatient = (apiPt: any): Patient => {
 };
 
 export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Socket integration
+  const { socket, status: socketStatus, isConnected } = useSocket();
+
   // State variables
   const [patients, setPatients] = useState<Patient[]>([]);
   const [currentToken, setCurrentToken] = useState<string>('QC-100');
@@ -288,6 +296,71 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
+  // Listen for socket events and update state immediately
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleQueueUpdated = (data: any) => {
+      console.log('Socket event: queueUpdated', data);
+      if (Array.isArray(data)) {
+        setPatients(data.map(transformToPatient));
+      } else {
+        refreshData();
+      }
+    };
+
+    const handlePatientAdded = (data: any) => {
+      console.log('Socket event: patientAdded', data);
+      refreshData();
+    };
+
+    const handlePatientCompleted = (data: any) => {
+      console.log('Socket event: patientCompleted', data);
+      refreshData();
+    };
+
+    const handleCurrentTokenUpdated = (data: any) => {
+      console.log('Socket event: currentTokenUpdated', data);
+      if (data !== undefined && data !== null) {
+        const raw = String(typeof data === 'object' ? (data.token || data.currentToken) : data);
+        setCurrentToken(raw.startsWith('QC-') ? raw : `QC-${raw}`);
+      }
+      refreshData();
+    };
+
+    const handleAverageTimeUpdated = (data: any) => {
+      console.log('Socket event: averageTimeUpdated', data);
+      if (typeof data === 'number') {
+        setAverageWaitTime(data);
+      } else if (data && typeof data === 'object' && typeof data.averageConsultationTime === 'number') {
+        setAverageWaitTime(data.averageConsultationTime);
+      }
+      refreshData();
+    };
+
+    socket.on('queueUpdated', handleQueueUpdated);
+    socket.on('patientAdded', handlePatientAdded);
+    socket.on('patientCompleted', handlePatientCompleted);
+    socket.on('currentTokenUpdated', handleCurrentTokenUpdated);
+    socket.on('averageTimeUpdated', handleAverageTimeUpdated);
+
+    return () => {
+      socket.off('queueUpdated', handleQueueUpdated);
+      socket.off('patientAdded', handlePatientAdded);
+      socket.off('patientCompleted', handlePatientCompleted);
+      socket.off('currentTokenUpdated', handleCurrentTokenUpdated);
+      socket.off('averageTimeUpdated', handleAverageTimeUpdated);
+    };
+  }, [socket, refreshData]);
+
+  // Automatic resync on socket connection/reconnection
+  useEffect(() => {
+    if (socketStatus === 'connected') {
+      console.log('Socket connected/reconnected. Running automatic resync...');
+      refreshData();
+    }
+  }, [socketStatus, refreshData]);
+
   // Auto polling updates every 5.5 seconds to sync Live displays seamlessly
   useEffect(() => {
     refreshData();
@@ -431,6 +504,8 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <QueueContext.Provider
       value={{
+        socketStatus,
+        isConnected,
         patients,
         averageWaitTime,
         queue,
