@@ -14,7 +14,8 @@ export const Receptionist: React.FC = () => {
   const navigate = useNavigate();
   const { 
     patients, receptionist, logoutReceptionist, addPatient, 
-    callPatient, completePatient, noShowPatient, removePatient, darkMode 
+    callPatient, callNextPatient, completePatient, noShowPatient, removePatient, darkMode,
+    averageWaitTime, updateAverageConsultationTime, currentToken, waitingCount, completedCount
   } = useQueue();
 
   // Route protection - send staff back to auth login if not authorized
@@ -24,8 +25,6 @@ export const Receptionist: React.FC = () => {
     }
   }, [receptionist, navigate]);
 
-  // Receptionist-specific average consultation state
-  const [avgConsultMinutes, setAvgConsultMinutes] = useState(8);
   const [showAvgEditOptions, setShowAvgEditOptions] = useState(false);
 
   // Add Patient Card Form Triage States
@@ -45,19 +44,11 @@ export const Receptionist: React.FC = () => {
 
   // Active calling tickets
   const callingPatients = patients.filter(p => p.status === 'calling');
-  const nowServingToken = callingPatients.length > 0 
-    ? callingPatients[callingPatients.length - 1].ticketNumber 
-    : 'QC-100';
+  const activeServingPatient = patients.find(p => p.ticketNumber === currentToken || p.status === 'calling');
+  const nowServingToken = currentToken;
+  const nowServingName = activeServingPatient ? activeServingPatient.name : 'No active patient called';
 
-  const nowServingName = callingPatients.length > 0 
-    ? callingPatients[callingPatients.length - 1].name 
-    : 'No active patient called';
-
-  // Statistics
-  const waitingCount = patients.filter(p => p.status === 'waiting').length;
-  const completedCount = patients.filter(p => p.status === 'completed').length;
-
-  const handleAddPatientSubmit = (e: React.FormEvent) => {
+  const handleAddPatientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Explicit Validation Check 
@@ -70,57 +61,53 @@ export const Receptionist: React.FC = () => {
     setFormError('');
     const priorityCode: PriorityLevel = isUrgent ? 'urgent' : 'normal';
     
-    // Call Context action to add persistent local patient
-    const registered = addPatient(newPatientName, visitPurpose, priorityCode);
-    
-    // Trigger Success feedback
-    setSuccessTicket(registered.ticketNumber);
-    setSuccessMessage(`Patient "${newPatientName}" registered successfully!`);
-    setNewPatientName('');
-    setIsUrgent(false);
-    setVisitPurpose('General Consultation');
+    try {
+      // Call Context action to add persistent local patient
+      const registered = await addPatient(newPatientName, visitPurpose, priorityCode);
+      
+      // Trigger Success feedback
+      setSuccessTicket(registered.ticketNumber);
+      setSuccessMessage(`Patient "${newPatientName}" registered successfully!`);
+      setNewPatientName('');
+      setIsUrgent(false);
+      setVisitPurpose('General Consultation');
 
-    // Highlight newly added item in list
-    setHighlightedId(registered.id);
-    setTimeout(() => setHighlightedId(null), 3000);
+      // Highlight newly added item in list
+      setHighlightedId(registered.id);
+      setTimeout(() => setHighlightedId(null), 3000);
 
-    // Auto clear success Toast after 4 seconds
-    setTimeout(() => {
-      setSuccessMessage('');
-      setSuccessTicket('');
-    }, 4500);
+      // Auto clear success Toast after 4 seconds
+      setTimeout(() => {
+        setSuccessMessage('');
+        setSuccessTicket('');
+      }, 4500);
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to add patient to register');
+    }
   };
 
   // Automated "Call Next" from Waiting Stack
-  const handleCallNextTicket = () => {
-    // Get all waiting list sorted by priority (urgent first, then FIFO)
-    const waitingList = patients
-      .filter(p => p.status === 'waiting')
-      .sort((a, b) => {
-        if (a.priority === 'urgent' && b.priority !== 'urgent') return -1;
-        if (a.priority !== 'urgent' && b.priority === 'urgent') return 1;
-        return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
-      });
-
-    if (waitingList.length === 0) {
-      alert('The standby waitlist is currently empty. Add a patient to call next.');
-      return;
+  const handleCallNextTicket = async () => {
+    try {
+      const nextPatient = await callNextPatient(receptionist.room);
+      if (nextPatient) {
+        // Visual flash reminder
+        setSuccessMessage(`Now announcing Ticket ${nextPatient.ticketNumber}`);
+        setSuccessTicket(nextPatient.ticketNumber);
+        setTimeout(() => {
+          setSuccessMessage('');
+          setSuccessTicket('');
+        }, 3500);
+      } else {
+        alert('The standby waitlist is currently empty. Add a patient to call next.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'No more patients waiting in queue.');
     }
-
-    const nextPatient = waitingList[0];
-    callPatient(nextPatient.id, receptionist.room);
-    
-    // Visual flash reminder
-    setSuccessMessage(`Now announcing Ticket ${nextPatient.ticketNumber}`);
-    setSuccessTicket(nextPatient.ticketNumber);
-    setTimeout(() => {
-      setSuccessMessage('');
-      setSuccessTicket('');
-    }, 3500);
   };
 
   const handleIncrementAvg = (amount: number) => {
-    setAvgConsultMinutes(prev => Math.min(60, Math.max(3, prev + amount)));
+    updateAverageConsultationTime(Math.max(1, averageWaitTime + amount));
   };
 
   return (
@@ -333,7 +320,7 @@ export const Receptionist: React.FC = () => {
             <div>
               <div className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Consultation Target</div>
               <div className="text-[14px] font-extrabold text-slate-950 dark:text-white mt-0.5">
-                {avgConsultMinutes} Minutes Average
+                {averageWaitTime} Minutes Average
               </div>
             </div>
           </div>
@@ -370,7 +357,7 @@ export const Receptionist: React.FC = () => {
                 >
                   -
                 </button>
-                <span className="font-mono font-bold text-xs w-6 text-center">{avgConsultMinutes}m</span>
+                <span className="font-mono font-bold text-xs w-6 text-center">{averageWaitTime}m</span>
                 <button
                   type="button"
                   onClick={() => handleIncrementAvg(1)}

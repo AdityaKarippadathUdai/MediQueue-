@@ -44,28 +44,36 @@ export const Patient: React.FC = () => {
   }, [patients, activeMyTicketId, myPatient]);
 
   // Join Queue action
-  const handleJoinQueue = (e: React.FormEvent) => {
+  const handleJoinQueue = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!registerName.trim()) return;
 
-    const patientObj = addPatient(registerName, registerPurpose, registerPriority);
-    setActiveMyTicketId(patientObj.id);
-    localStorage.setItem('qc_my_patient_id', patientObj.id);
-    setRegisterName('');
-    setRegisterPriority('normal');
-    
-    // Quick success trigger
-    setAdmissionSuccess(true);
-    setTimeout(() => setAdmissionSuccess(false), 3000);
+    try {
+      const patientObj = await addPatient(registerName, registerPurpose, registerPriority);
+      setActiveMyTicketId(patientObj.id);
+      localStorage.setItem('qc_my_patient_id', patientObj.id);
+      setRegisterName('');
+      setRegisterPriority('normal');
+      
+      // Quick success trigger
+      setAdmissionSuccess(true);
+      setTimeout(() => setAdmissionSuccess(false), 3000);
+    } catch (err) {
+      console.error('Error joining queue:', err);
+    }
   };
 
   // Withdraw action
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     if (window.confirm('Are you sure you want to withdraw from the medical queue? This cancels your digital ticket.')) {
       if (activeMyTicketId) {
-        removePatient(activeMyTicketId);
-        localStorage.removeItem('qc_my_patient_id');
-        setActiveMyTicketId(null);
+        try {
+          await removePatient(activeMyTicketId);
+          localStorage.removeItem('qc_my_patient_id');
+          setActiveMyTicketId(null);
+        } catch (err) {
+          console.error('Error withdrawing from queue:', err);
+        }
       }
     }
   };
