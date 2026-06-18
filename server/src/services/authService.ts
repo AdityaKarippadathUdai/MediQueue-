@@ -3,8 +3,8 @@ import { hashPassword, comparePassword, signToken } from '../utils/auth';
 import { CustomError } from '../middleware/error';
 
 export class AuthService {
-  async register(payload: { username: string; password: string; name: string; room?: string }) {
-    const existingUser = await prisma.user.findUnique({
+  async register(payload: { username: string; password: string; name: string }) {
+    const existingUser = await prisma.receptionist.findUnique({
       where: { username: payload.username },
     });
 
@@ -15,12 +15,11 @@ export class AuthService {
     }
 
     const hashedPassword = await hashPassword(payload.password);
-    const user = await prisma.user.create({
+    const user = await prisma.receptionist.create({
       data: {
         username: payload.username,
-        password: hashedPassword,
+        passwordHash: hashedPassword,
         name: payload.name,
-        room: payload.room || 'Examination Room 1',
       },
     });
 
@@ -28,8 +27,8 @@ export class AuthService {
     const token = signToken({
       userId: user.id,
       username: user.username,
-      role: user.role,
-      room: user.room,
+      role: 'Receptionist', // Default role
+      room: 'Examination Room 1', // Default room
     });
 
     return {
@@ -38,14 +37,14 @@ export class AuthService {
         id: user.id,
         username: user.username,
         name: user.name,
-        role: user.role,
-        room: user.room,
+        role: 'Receptionist',
+        room: 'Examination Room 1',
       },
     };
   }
 
   async login(payload: { username: string; password: string }) {
-    const user = await prisma.user.findUnique({
+    const user = await prisma.receptionist.findUnique({
       where: { username: payload.username },
     });
 
@@ -55,7 +54,7 @@ export class AuthService {
       throw err;
     }
 
-    const isPasswordValid = await comparePassword(payload.password, user.password);
+    const isPasswordValid = await comparePassword(payload.password, user.passwordHash);
     if (!isPasswordValid) {
       const err: CustomError = new Error('Invalid username or password');
       err.statusCode = 401;
@@ -66,8 +65,8 @@ export class AuthService {
     const token = signToken({
       userId: user.id,
       username: user.username,
-      role: user.role,
-      room: user.room,
+      role: 'Receptionist',
+      room: 'Examination Room 1',
     });
 
     return {
@@ -76,14 +75,14 @@ export class AuthService {
         id: user.id,
         username: user.username,
         name: user.name,
-        role: user.role,
-        room: user.room,
+        role: 'Receptionist',
+        room: 'Examination Room 1',
       },
     };
   }
 
   async getProfile(userId: string) {
-    const user = await prisma.user.findUnique({
+    const user = await prisma.receptionist.findUnique({
       where: { id: userId },
     });
 
@@ -97,8 +96,8 @@ export class AuthService {
       id: user.id,
       username: user.username,
       name: user.name,
-      role: user.role,
-      room: user.room,
+      role: 'Receptionist',
+      room: 'Examination Room 1',
     };
   }
 }
