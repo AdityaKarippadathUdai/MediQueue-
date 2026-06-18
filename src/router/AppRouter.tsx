@@ -41,7 +41,6 @@ const RootRouter: React.FC = () => {
 
   // Smooth route transitions
   const animationProps = {
-    key: location.pathname,
     initial: { opacity: 0, y: isFullWidth ? 8 : 12 },
     animate: { opacity: 1, y: 0 },
     exit: { opacity: 0, y: isFullWidth ? -8 : -12 },
@@ -53,7 +52,7 @@ const RootRouter: React.FC = () => {
     return (
       <FullWidthLayout>
         <AnimatePresence mode="wait">
-          <motion.div {...animationProps}>
+          <motion.div key={location.pathname} {...animationProps}>
             <Routes location={location}>
               <Route path="/reception-login" element={<ReceptionistLogin />} />
               <Route path="/receptionist" element={<Receptionist />} />
@@ -68,7 +67,7 @@ const RootRouter: React.FC = () => {
   return (
     <PatientLayout>
       <AnimatePresence mode="wait">
-        <motion.div {...animationProps}>
+        <motion.div key={location.pathname} {...animationProps}>
           <Routes location={location}>
             <Route path="/" element={<Home />} />
             <Route path="/patient" element={<Patient />} />
