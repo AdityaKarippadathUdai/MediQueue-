@@ -10,44 +10,87 @@ import { MobileContainer } from '../components/MobileContainer';
 import { useQueue } from '../context/QueueContext';
 import { motion, AnimatePresence } from 'motion/react';
 
-// Wrapper layout that couples Header with Device mockup frame 
-const GlobalLayout: React.FC = () => {
-  const location = useLocation();
-  const { toasts, removeToast } = useQueue();
-
+// Patient layout wrapping Home, Entry, and Waiting tracker inside highly realistic mobile device frames
+const PatientLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <MobileContainer>
       <Header />
-      
-      {/* 
-        Smooth Framer Motion route transitions.
-        This gives a fluid, natural app sliding effect.
-      */}
+      {children}
+    </MobileContainer>
+  );
+};
+
+// Full-screen layout with full responsive width for receptionist, receptionist-login, and live displays
+const FullWidthLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { darkMode } = useQueue();
+
+  return (
+    <div className={`min-h-screen w-full transition-colors duration-300 ${
+      darkMode ? 'bg-slate-950 text-slate-150' : 'bg-[#F8FAFC] text-slate-800'
+    } flex flex-col`}>
+      <main className="flex-1 flex flex-col w-full h-full">
+        {children}
+      </main>
+    </div>
+  );
+};
+
+const RootRouter: React.FC = () => {
+  const location = useLocation();
+  const isFullWidth = ['/reception-login', '/receptionist', '/display'].includes(location.pathname);
+
+  // Smooth route transitions
+  const animationProps = {
+    key: location.pathname,
+    initial: { opacity: 0, y: isFullWidth ? 8 : 12 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: isFullWidth ? -8 : -12 },
+    transition: { duration: 0.25, ease: 'easeInOut' },
+    className: "flex-1 flex flex-col w-full"
+  };
+
+  if (isFullWidth) {
+    return (
+      <FullWidthLayout>
+        <AnimatePresence mode="wait">
+          <motion.div {...animationProps}>
+            <Routes location={location}>
+              <Route path="/reception-login" element={<ReceptionistLogin />} />
+              <Route path="/receptionist" element={<Receptionist />} />
+              <Route path="/display" element={<Display />} />
+            </Routes>
+          </motion.div>
+        </AnimatePresence>
+      </FullWidthLayout>
+    );
+  }
+
+  return (
+    <PatientLayout>
       <AnimatePresence mode="wait">
-        <motion.div
-          key={location.pathname}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -12 }}
-          transition={{ duration: 0.25, ease: 'easeInOut' }}
-          className="flex-1 flex flex-col"
-        >
+        <motion.div {...animationProps}>
           <Routes location={location}>
             <Route path="/" element={<Home />} />
             <Route path="/patient" element={<Patient />} />
             <Route path="/patient/:tokenId" element={<Patient />} />
-            <Route path="/reception-login" element={<ReceptionistLogin />} />
-            <Route path="/receptionist" element={<Receptionist />} />
-            <Route path="/display" element={<Display />} />
-            
-            {/* Catch-all safety routing going home */}
+            {/* Catch-all safety routing going to patient home portal */}
             <Route path="*" element={<Home />} />
           </Routes>
         </motion.div>
       </AnimatePresence>
+    </PatientLayout>
+  );
+};
+
+export const AppRouter: React.FC = () => {
+  const { toasts, removeToast } = useQueue();
+
+  return (
+    <BrowserRouter>
+      <RootRouter />
 
       {/* Global animated floating toast notification drawer */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-[calc(100%-2rem)] max-w-[380px] pointer-events-none">
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-55 flex flex-col gap-2 w-[calc(100%-2rem)] max-w-[380px] pointer-events-none">
         <AnimatePresence>
           {toasts && toasts.map(t => (
             <motion.div
@@ -76,17 +119,6 @@ const GlobalLayout: React.FC = () => {
           ))}
         </AnimatePresence>
       </div>
-
-    </MobileContainer>
-  );
-};
-
-export const AppRouter: React.FC = () => {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/*" element={<GlobalLayout />} />
-      </Routes>
     </BrowserRouter>
   );
 };
