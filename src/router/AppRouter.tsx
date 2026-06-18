@@ -35,6 +35,7 @@ const GlobalLayout: React.FC = () => {
           <Routes location={location}>
             <Route path="/" element={<Home />} />
             <Route path="/patient" element={<Patient />} />
+            <Route path="/patient/:tokenId" element={<Patient />} />
             <Route path="/reception-login" element={<ReceptionistLogin />} />
             <Route path="/receptionist" element={<Receptionist />} />
             <Route path="/display" element={<Display />} />
