@@ -19,6 +19,22 @@ interface ActivityLog {
   type: 'add' | 'call' | 'complete' | 'absent' | 'system';
 }
 
+// Simple clean metric value wrapper with a subtle key-based trigger animation
+const ValueMotion: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <AnimatePresence mode="wait">
+    <motion.span
+      key={String(children)}
+      initial={{ opacity: 0, y: 10, scale: 0.93 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -10, scale: 0.93 }}
+      transition={{ duration: 0.18 }}
+      className="inline-block"
+    >
+      {children}
+    </motion.span>
+  </AnimatePresence>
+);
+
 export const Receptionist: React.FC = () => {
   const navigate = useNavigate();
   const { 
@@ -383,22 +399,6 @@ export const Receptionist: React.FC = () => {
     if (diffMins < 1) return '< 1 min';
     return `${diffMins} mins`;
   };
-
-  // Simple clean metric value wrapper with a subtle key-based trigger animation
-  const ValueMotion: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <AnimatePresence mode="wait">
-      <motion.span
-        key={String(children)}
-        initial={{ opacity: 0, y: 10, scale: 0.93 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -10, scale: 0.93 }}
-        transition={{ duration: 0.18 }}
-        className="inline-block"
-      >
-        {children}
-      </motion.span>
-    </AnimatePresence>
-  );
 
   return (
     <div className={`min-h-screen w-full flex flex-col transition-colors duration-300 font-sans select-none ${
