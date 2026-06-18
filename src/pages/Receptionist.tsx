@@ -10,6 +10,7 @@ import {
   Activity, Bell, ChevronRight, Calendar, Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { InstallAppCard } from '../components/PWAInstallComponents';
 
 // Activity Interface
 interface ActivityLog {
@@ -1203,6 +1204,9 @@ export const Receptionist: React.FC = () => {
                 OPERATIONAL DESK AUDITING CURRENTLY ACTIVE
               </div>
             </div>
+
+            {/* PWA Install App Card integration for Receptionist dashboard */}
+            <InstallAppCard />
 
             {/* QR Poster Card */}
             <div className={`p-5 rounded-3xl border text-left ${

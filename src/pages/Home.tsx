@@ -18,14 +18,27 @@ import {
   Activity,
   Layers,
   CheckCircle2,
-  Lock
+  Lock,
+  Download
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { PWAInstructionsModal } from '../components/PWAInstallComponents';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const { darkMode } = useQueue();
   const [greeting, setGreeting] = useState('Welcome to Queue Cure');
+  const [showInstructions, setShowInstructions] = useState(false);
+
+  const { installState, isInstallable, installApp, dismissPrompt, completeSimulatedInstall } = usePWAInstall();
+
+  const handleHomeInstallClick = async () => {
+    const res = await installApp();
+    if (res.outcome === 'fallback') {
+      setShowInstructions(true);
+    }
+  };
 
   // Dynamic empathetic clinical greeting based on current local time
   useEffect(() => {
@@ -108,6 +121,57 @@ export const Home: React.FC = () => {
           🏥 Next-Generation Triage & Waiting Standby
         </p>
       </motion.div>
+
+      {/* PWA Home Panel Integration */}
+      {isInstallable && installState !== 'installed' && installState !== 'dismissed' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 220, damping: 18 }}
+          className={`p-4 mx-auto w-full max-w-md rounded-3xl border z-10 my-2 text-left relative overflow-hidden flex flex-col gap-3 ${
+            darkMode 
+              ? 'bg-gradient-to-r from-emerald-950/20 to-teal-950/20 border-emerald-500/20' 
+              : 'bg-[#ECFDF5] border-emerald-500/20 shadow-xs'
+          }`}
+          id="pwa-home-install-block"
+        >
+          <div className="flex gap-3 items-start">
+            <div className="p-2.5 rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400 mt-0.5 flex-shrink-0 animate-pulse">
+              <Download className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-sans font-black text-sm text-slate-900 dark:text-white leading-tight">
+                Install Queue Cure
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-350 mt-1 leading-normal">
+                Get instant access from your home screen.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={dismissPrompt}
+              className="px-4 py-2 rounded-xl text-[10.5px] font-black text-slate-500 hover:text-slate-750 dark:text-slate-400 dark:hover:text-slate-200 uppercase tracking-wider transition-colors cursor-pointer"
+            >
+              Maybe Later
+            </button>
+            <button
+              onClick={handleHomeInstallClick}
+              className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600 text-white font-extrabold text-[10.5px] uppercase tracking-wider transition-all cursor-pointer shadow-xs"
+            >
+              Install App
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Manual Instruction Guide Modal */}
+      <PWAInstructionsModal 
+        isOpen={showInstructions} 
+        onClose={() => setShowInstructions(false)}
+        onSimulateInstall={completeSimulatedInstall}
+      />
 
       {/* ================= CLINIC CARD OPTIONS GRID ================= */}
       <motion.div 
@@ -262,108 +326,6 @@ export const Home: React.FC = () => {
           </div>
         </motion.div>
 
-      </motion.div>
-
-      {/* ================= SUPERCHARGED HEALTH SYSTEM INHERENT FEATURES ================= */}
-      <motion.div 
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35, duration: 0.45 }}
-        className={`mt-4 p-4.5 rounded-3xl border z-10 text-left ${
-          darkMode ? 'bg-slate-900/40 border-slate-850' : 'bg-slate-50 border-slate-100'
-        }`}
-        id="portal-features-box"
-      >
-        <div className="flex items-center justify-between mb-3 border-b border-slate-200/50 dark:border-slate-800/50 pb-2">
-          <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-blue-500" />
-            <span>Feature Highlights</span>
-          </span>
-          
-          <div className="flex items-center gap-1 text-[9px] font-bold text-emerald-500 bg-emerald-500/5 px-2 py-0.5 rounded-lg border border-emerald-500/10">
-            <CheckCircle2 className="w-3 h-3" /> Fully Operational
-          </div>
-        </div>
-
-        {/* Interactive Responsive Grid of standard bullet items requested */}
-        <div className="grid grid-cols-2 gap-3">
-          
-          {/* Live Updates */}
-          <div className="flex items-start gap-2.5">
-            <div className="p-1.5 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5">
-              <Wifi className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="text-[11.5px] font-black text-slate-900 dark:text-slate-200 block">
-                Live Updates
-              </span>
-              <span className="text-[9px] text-slate-400 block leading-tight">
-                Synced push reports
-              </span>
-            </div>
-          </div>
-
-          {/* QR Tracking */}
-          <div className="flex items-start gap-2.5">
-            <div className="p-1.5 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5">
-              <QrCode className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="text-[11.5px] font-black text-slate-900 dark:text-slate-200 block">
-                QR Tracking
-              </span>
-              <span className="text-[9px] text-slate-400 block leading-tight">
-                Scan guest receipts
-              </span>
-            </div>
-          </div>
-
-          {/* Wait Time Prediction */}
-          <div className="flex items-start gap-2.5">
-            <div className="p-1.5 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-0.5">
-              <Clock className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="text-[11.5px] font-black text-slate-900 dark:text-slate-200 block">
-                Wait Prediction
-              </span>
-              <span className="text-[9px] text-slate-400 block leading-tight">
-                AI delay forecasting
-              </span>
-            </div>
-          </div>
-
-          {/* Mobile Friendly */}
-          <div className="flex items-start gap-2.5">
-            <div className="p-1.5 rounded-xl bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5">
-              <Smartphone className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="text-[11.5px] font-black text-slate-900 dark:text-slate-200 block">
-                Mobile Friendly
-              </span>
-              <span className="text-[9px] text-slate-400 block leading-tight">
-                Responsive layouts
-              </span>
-            </div>
-          </div>
-
-          {/* PWA Ready */}
-          <div className="flex items-start gap-2.5 col-span-2 border-t border-slate-105 dark:border-slate-800/40 pt-2.5 mt-0.5">
-            <div className="p-1.5 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5">
-              <Layers className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="text-[11.5px] font-black text-slate-900 dark:text-slate-200 block">
-                PWA Ready Seamless Sandbox
-              </span>
-              <span className="text-[9.5px] text-slate-400 block leading-normal mt-0.5">
-                Install as a mobile app launcher on iOS, Android & modern web containers.
-              </span>
-            </div>
-          </div>
-
-        </div>
       </motion.div>
 
       {/* ================= BRADING CLOUD FOOTER ================= */}
