@@ -20,25 +20,36 @@ import {
   RotateCw,
   Clock,
   Users,
-  BellRing
+  BellRing,
+  Sparkles,
+  Calendar,
+  Layers,
+  HelpCircle,
+  TrendingUp,
+  Check,
+  Compass,
+  LayoutGrid
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const Patient: React.FC = () => {
-  const { tokenId } = useParams<{ tokenId?: string }>();
+  // Support both :tokenId and :token route param variables for absolute safety and backward compatibility
+  const { tokenId, token } = useParams<{ tokenId?: string; token?: string }>();
+  const activeTokenId = token || tokenId;
+  
   const navigate = useNavigate();
   
   const { 
     patients, 
     averageWaitTime, 
-    currentToken, 
+    currentToken: liveCurrentToken, 
     waitingCount,
     socketStatus,
     darkMode 
   } = useQueue();
 
   // Local storage recent tokens history key
-  const RECENT_TOKENS_KEY = 'recentTrackedTokens';
+  const RECENT_TOKENS_KEY = 'recentTrackedTokens_v2';
 
   // State for search token input
   const [searchToken, setSearchToken] = useState('');
@@ -54,8 +65,24 @@ export const Patient: React.FC = () => {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Presets status for mock/simulated tokens not found in the live backend list
-  const [presetStatus, setPresetStatus] = useState<'Waiting' | 'Being Called' | 'Completed'>('Waiting');
+  // Interactive local simulation variables (so users can dry-run any scenario)
+  const [simulatedCurrentToken, setSimulatedCurrentToken] = useState<number>(104);
+  const [simulatedStatus, setSimulatedStatus] = useState<'Waiting' | 'Being Called' | 'Completed'>('Waiting');
+  const [simulatedPatientsAhead, setSimulatedPatientsAhead] = useState<number>(4);
+  const [simulatedWaitMinutes, setSimulatedWaitMinutes] = useState<number>(32);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+
+  // Keep a mock registration time that persists for the session on raw simulated tokens
+  const [simulatedJoinTime, setSimulatedJoinTime] = useState<string>('');
+
+  // Auto initialize simulated join time
+  useEffect(() => {
+    if (!simulatedJoinTime) {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - 20); // joined 20 mins ago
+      setSimulatedJoinTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    }
+  }, [simulatedJoinTime]);
 
   // Load history from localStorage on mount
   useEffect(() => {
@@ -63,20 +90,25 @@ export const Patient: React.FC = () => {
       const stored = localStorage.getItem(RECENT_TOKENS_KEY);
       if (stored) {
         setRecentTokens(JSON.parse(stored));
+      } else {
+        // Seed some plausible sample tokens if empty to show quick switching immediately
+        const initialSeeds = ['108', '112', '125'];
+        setRecentTokens(initialSeeds);
+        localStorage.setItem(RECENT_TOKENS_KEY, JSON.stringify(initialSeeds));
       }
     } catch (e) {
       console.warn('Could not load recent token history:', e);
     }
   }, []);
 
-  // Helper to append a token to the history list (and restrict to last 3 unique as illustrated)
+  // Helper to append a token to the history list (and restrict to last 5 unique)
   const saveToHistory = (tokenStr: string) => {
     try {
-      const cleanToken = tokenStr.replace(/qc-/i, '').trim();
+      const cleanToken = tokenStr.replace(/qc-/i, '').replace(/[^0-9]/g, '').trim();
       if (!cleanToken) return;
 
       const filtered = recentTokens.filter(t => t !== cleanToken);
-      const updated = [cleanToken, ...filtered].slice(0, 3);
+      const updated = [cleanToken, ...filtered].slice(0, 5);
       setRecentTokens(updated);
       localStorage.setItem(RECENT_TOKENS_KEY, JSON.stringify(updated));
     } catch (e) {
@@ -86,13 +118,14 @@ export const Patient: React.FC = () => {
 
   // Find if there is a matching patient in the database
   const getMatchedPatient = (): PatientType | null => {
-    if (!tokenId) return null;
-    const cleanToken = tokenId.toUpperCase().trim();
+    if (!activeTokenId) return null;
+    const cleanToken = activeTokenId.toUpperCase().trim();
     
     return patients.find(p => 
       p.ticketNumber.toUpperCase() === cleanToken || 
       p.ticketNumber.toUpperCase() === `QC-${cleanToken}` || 
-      p.id === cleanToken
+      p.id === cleanToken ||
+      p.ticketNumber.replace(/qc-/i, '') === cleanToken
     ) || null;
   };
 
@@ -100,10 +133,52 @@ export const Patient: React.FC = () => {
 
   // Save token to history if successfully tracking a token
   useEffect(() => {
-    if (tokenId) {
-      saveToHistory(tokenId);
+    if (activeTokenId) {
+      saveToHistory(activeTokenId);
     }
-  }, [tokenId]);
+  }, [activeTokenId]);
+
+  // Sync simulation values with live DB states, but allow manual simulation overrides!
+  useEffect(() => {
+    if (activeTokenId) {
+      const cleanTokenNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10) || 108;
+      
+      if (matchedPatient) {
+        // Sync of Live DB
+        if (!isSimulating) {
+          // Status sync
+          if (matchedPatient.status === 'calling') {
+            setSimulatedStatus('Being Called');
+          } else if (matchedPatient.status === 'completed') {
+            setSimulatedStatus('Completed');
+          } else {
+            setSimulatedStatus('Waiting');
+          }
+
+          // Live Wait stats sync
+          const pos = getQueuePosition(matchedPatient);
+          setSimulatedPatientsAhead(pos > 0 ? pos - 1 : 0);
+          setSimulatedWaitMinutes(matchedPatient.estimatedWaitMinutes || (pos * (averageWaitTime || 8)));
+          
+          // Current called token sync
+          const liveTokenNum = parseInt(liveCurrentToken.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10);
+          if (!isNaN(liveTokenNum)) {
+            setSimulatedCurrentToken(liveTokenNum);
+          } else {
+            setSimulatedCurrentToken(Math.max(100, cleanTokenNum - 4));
+          }
+        }
+      } else {
+        // If simulated dummy token of user request (like 108 or 112)
+        if (!isSimulating) {
+          setSimulatedCurrentToken(Math.max(100, cleanTokenNum - 4));
+          setSimulatedPatientsAhead(4);
+          setSimulatedWaitMinutes(32);
+          setSimulatedStatus('Waiting');
+        }
+      }
+    }
+  }, [activeTokenId, matchedPatient, liveCurrentToken, isSimulating]);
 
   const getQueuePosition = (patientObj: PatientType) => {
     if (patientObj.status !== 'waiting') return 0;
@@ -120,7 +195,7 @@ export const Patient: React.FC = () => {
     return index !== -1 ? index + 1 : 0;
   };
 
-  const patientPos = matchedPatient ? getQueuePosition(matchedPatient) : 0;
+  const patientPos = matchedPatient ? getQueuePosition(matchedPatient) : (simulatedPatientsAhead + 1);
 
   // Active validation on tracker submission
   const handleTrackToken = (e: React.FormEvent) => {
@@ -146,13 +221,15 @@ export const Patient: React.FC = () => {
     setTimeout(() => {
       setSearchSuccess(false);
       setSearchToken('');
+      setIsSimulating(false); // Reset simulation state for pristine tracking
       navigate(`/patient/${clean}`);
     }, 600);
   };
 
   // Immediate selection of a past tracked token
-  const handleQuickReopen = (token: string) => {
-    navigate(`/patient/${token}`);
+  const handleQuickReopen = (tk: string) => {
+    setIsSimulating(false);
+    navigate(`/patient/${tk}`);
   };
 
   // Real WebRTC Camera & High-fidelity Viewfinder Simulation Flow
@@ -179,8 +256,7 @@ export const Patient: React.FC = () => {
         }, 1000);
 
       } catch (err: any) {
-        console.warn('Real camera feed error or block. Fallback to Android simulator:', err);
-        // Fallback to beautiful permission denied flow or error state depending on block type
+        console.warn('Real camera feed error or block. Fallback to simulator:', err);
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
           setScannerState('denied');
         } else {
@@ -206,286 +282,449 @@ export const Patient: React.FC = () => {
     // Successful scan countdown animation
     setTimeout(() => {
       closeCameraScanner();
+      setIsSimulating(false);
       navigate(`/patient/${simToken}`);
     }, 1200);
   };
 
-  return (
-    <div className="flex-1 flex flex-col px-5 pt-3 pb-8 relative overflow-hidden" id="patient-primary-portal">
-      {/* Background Ambience Graphics */}
-      <div className="absolute top-[-50px] right-[-50px] w-48 h-48 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
-      <div className="absolute bottom-[20px] left-[-30px] w-44 h-44 rounded-full bg-emerald-500/5 blur-3xl pointer-events-none" />
+  // Calculations for display times
+  const getSimulatedEstimatedCallTime = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + (simulatedStatus === 'Completed' ? 0 : simulatedWaitMinutes));
+    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
-      {tokenId ? (
-        /* -----------------------------------------------------
-            VIEW A: ACTIVE TOKEN STATUS DISPLAY DETAILS
-            ----------------------------------------------------- */
+  const getSimulatedJoinTimeFormatted = () => {
+    if (matchedPatient) {
+      return new Date(matchedPatient.joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return simulatedJoinTime || '09:12 PM';
+  };
+
+  // Generate the Step Sequence for Queue Progress visualizer e.g., 104 -> 105 -> ... -> 108
+  const getProgressSteps = () => {
+    if (!activeTokenId) return [];
+    
+    const trackerNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10) || 108;
+    const startNum = simulatedCurrentToken;
+
+    if (startNum >= trackerNum) {
+      return [trackerNum];
+    }
+
+    const diff = trackerNum - startNum;
+    if (diff <= 4) {
+      const steps = [];
+      for (let i = startNum; i <= trackerNum; i++) {
+        steps.push(i);
+      }
+      return steps;
+    } else {
+      // For larger difference, show: [Start, Start+1, '...', MyToken-1, MyToken]
+      return [startNum, startNum + 1, '...', trackerNum - 1, trackerNum];
+    }
+  };
+
+  const progressSteps = getProgressSteps();
+
+  // Calculate percentage for progress fill
+  const calculateProgressPercent = () => {
+    if (simulatedStatus === 'Completed') return 100;
+    if (simulatedStatus === 'Being Called') return 80;
+    
+    // Waiting: evaluate based on how close simulated current serving is to tracked token
+    if (!activeTokenId) return 20;
+    const trackerNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10) || 108;
+    const startNum = simulatedCurrentToken;
+    if (startNum >= trackerNum) return 80;
+
+    const currentDistance = trackerNum - startNum;
+    const initialDistance = Math.max(currentDistance, 6); // normal scale
+    const completedFraction = (initialDistance - currentDistance) / initialDistance;
+    return Math.min(75, Math.max(25, Math.round(completedFraction * 100)));
+  };
+
+  return (
+    <div className="flex-1 flex flex-col px-4 pt-3 pb-24 relative overflow-y-auto selection:bg-blue-500/20" id="patient-primary-portal">
+      {/* Ambient background accent graphics */}
+      <div className="absolute top-[-40px] right-[-30px] w-56 h-56 rounded-full bg-blue-500/8 blur-3xl pointer-events-none" />
+      <div className="absolute bottom-[40px] left-[-30px] w-48 h-48 rounded-full bg-indigo-500/5 blur-3xl pointer-events-none" />
+
+      {activeTokenId ? (
+        /* ====================================================================
+           ACTIVE TOKEN STANDBY DETAILS SCREEN (The Complete Interactive Suite)
+           ==================================================================== */
         <AnimatePresence mode="wait">
           <motion.div
-            key="tracking-details"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            className="space-y-4 flex-1 flex flex-col justify-between"
+            key="tracking-details-panel"
+            initial={{ opacity: 0, scale: 0.98, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+            className="space-y-4"
           >
-            {/* Nav Header */}
-            <div className="flex items-center justify-between py-1 z-10">
+            {/* Header / Nav Elements */}
+            <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800 pb-3">
               <button 
-                onClick={() => navigate('/patient')}
-                className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer"
+                onClick={() => {
+                  setIsSimulating(false);
+                  navigate('/patient');
+                }}
+                className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-blue-600 transition-colors cursor-pointer group"
               >
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
                 <span>Track New Token</span>
               </button>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
-                  {socketStatus === 'connected' ? (
-                    <>
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </>
-                  ) : (
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                  )}
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                <span className={`text-[10px] font-bold tracking-wider uppercase ${
-                  socketStatus === 'connected' ? 'text-emerald-500' : 'text-amber-500 animate-pulse'
-                }`}>
-                  {socketStatus === 'connected' ? 'Live Connected' : 'Syncing'}
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-500">
+                  Live Status
                 </span>
               </div>
             </div>
 
-            {/* REAL DATABASE MATCH VISUALIZATION */}
-            {matchedPatient ? (
-              <div className="space-y-4 flex-1 flex flex-col justify-center my-auto">
-                <motion.div
-                  initial={{ scale: 0.96, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className={`py-7 px-5 rounded-3.5xl border text-center relative overflow-hidden transition-all shadow-xl ${
-                    matchedPatient.status === 'calling'
-                      ? 'border-blue-500 dark:border-blue-400 bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-blue-500/20 shadow-md'
-                      : darkMode 
-                        ? 'bg-slate-900 border-slate-800' 
-                        : 'bg-white border-slate-100 shadow-slate-100/60'
-                  }`}
-                  id={`live-token-ticket-${matchedPatient.ticketNumber}`}
-                >
-                  <div className="flex justify-center mb-1">
-                    {matchedPatient.status === 'calling' ? (
-                      <span className="px-3 py-1.5 rounded-xl bg-white text-blue-700 text-[10px] font-black tracking-wider animate-bounce uppercase shadow-sm">
-                        🛎️ Proceed Immediately
-                      </span>
-                    ) : matchedPatient.status === 'completed' ? (
-                      <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15 text-[10px] font-extrabold tracking-wider uppercase">
-                        ✅ Session Complete
-                      </span>
-                    ) : (
-                      <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wider uppercase border ${
-                        darkMode ? 'bg-slate-800/80 text-slate-350 border-slate-700' : 'bg-slate-50 text-slate-655 border-slate-150'
-                      }`}>
-                        📋 Queue Standby
-                      </span>
-                    )}
-                  </div>
+            {/* MAIN CARD STACK */}
+            <div className={`rounded-3xl border shadow-xl overflow-hidden transition-all ${
+              darkMode 
+                ? 'bg-slate-950 border-slate-800 hover:border-slate-700/80' 
+                : 'bg-white border-slate-150 hover:shadow-2xl hover:shadow-slate-100/100'
+            }`}>
+              
+              {/* STATUS BAR HEADER ACCENT */}
+              <div className={`p-4 text-center transition-all relative ${
+                simulatedStatus === 'Being Called'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white'
+                  : simulatedStatus === 'Completed'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white'
+                    : 'bg-slate-100 dark:bg-slate-900 border-b border-slate-150 dark:border-slate-800'
+              }`}>
+                {/* Simulated status ribbon tag */}
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase shadow-xs bg-white/10 text-white">
+                  {simulatedStatus === 'Being Called' && <BellRing className="w-3.5 h-3.5 animate-bounce text-amber-300" />}
+                  {simulatedStatus === 'Completed' && <Check className="w-3.5 h-3.5 text-white" />}
+                  {simulatedStatus === 'Waiting' && <Clock className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />}
+                  <span className={`${
+                    simulatedStatus === 'Waiting' ? 'text-slate-700 dark:text-slate-200' : ''
+                  }`}>
+                    {simulatedStatus}
+                  </span>
+                </div>
 
-                  {/* Token Info presentation */}
-                  <div className="py-4">
-                    <span className={`font-mono text-[56px] font-black tracking-tighter ${
-                      matchedPatient.status === 'calling' ? 'text-white' : 'text-blue-600 dark:text-blue-400'
-                    }`}>
-                      {matchedPatient.ticketNumber}
-                    </span>
-                    <p className={`text-xs mt-1.5 font-medium ${matchedPatient.status === 'calling' ? 'text-blue-105' : 'text-slate-500 dark:text-slate-400'}`}>
-                      Patient: <strong className="font-extrabold text-slate-800 dark:text-slate-200">{matchedPatient.name}</strong>
-                    </p>
-                    <p className={`text-[10px] mt-1 ${matchedPatient.status === 'calling' ? 'text-white/60' : 'text-slate-400'}`}>
-                      Purpose: {matchedPatient.purpose}
-                    </p>
-                  </div>
-
-                  <hr className={`border-dashed my-3.5 ${matchedPatient.status === 'calling' ? 'border-white/20' : 'border-slate-150 dark:border-slate-800'}`} />
-
-                  {matchedPatient.status === 'calling' ? (
-                    <div className="space-y-1.5 animate-pulse">
-                      <div className="font-sans font-extrabold text-[15px] text-white">
-                        Proceed to: <span className="underline decoration-wavy text-amber-300 font-sans font-black">{matchedPatient.assignedRoom || 'Consulting Room A'}</span>
-                      </div>
-                      <p className="text-[11px] text-blue-100 max-w-[280px] mx-auto leading-relaxed">
-                        Please enter the consultation lounge. Dr. Sarah has been dispatched to receive you.
-                      </p>
-                    </div>
-                  ) : matchedPatient.status === 'completed' ? (
-                    <div className="space-y-1">
-                      <div className="font-sans font-extrabold text-[14px] text-emerald-500 flex items-center justify-center gap-1.5">
-                        <CheckCircle2 className="w-5 h-5" />
-                        <span>Consultation Finished</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-[280px] mx-auto leading-relaxed">
-                        Your electronic diagnostics report is issued. Thank you for choosing Queue Cure '26.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3 mt-2">
-                      <div className={`p-3 rounded-2xl border text-left ${darkMode ? 'bg-slate-950/60 border-slate-850' : 'bg-slate-50 border-slate-150/70'}`}>
-                        <div className="text-[9.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Lounge Line</div>
-                        <div className="text-[18px] font-black font-display text-blue-600 dark:text-blue-400 mt-1">
-                          {patientPos > 0 ? `#${patientPos}` : 'Next'}
-                        </div>
-                      </div>
-
-                      <div className={`p-3 rounded-2xl border text-left ${darkMode ? 'bg-slate-950/60 border-slate-850' : 'bg-slate-50 border-slate-150/70'}`}>
-                        <div className="text-[9.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Est. Wait</div>
-                        <div className="text-[18px] font-black font-display text-emerald-500 mt-1">
-                          {matchedPatient.priority === 'urgent' ? 'Immediate' : `${Math.max(8, patientPos * (averageWaitTime || 8))} min`}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-
-                {/* Automation Tip layout */}
-                <div className={`p-3.5 rounded-2.5xl border text-[11.5px] leading-relaxed flex gap-2.5 ${
-                  darkMode ? 'bg-slate-900/40 border-slate-850 text-slate-400' : 'bg-slate-50 border-slate-150 text-slate-500'
-                }`}>
-                  <Activity className="w-4.5 h-4.5 text-blue-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">Automated Clinic Advisor</span>
-                    Active notifications are synced via Socket.IO. We'll chime when your practitioner calls.
-                  </div>
+                <div className="mt-4 flex flex-col items-center">
+                  <span className="text-[10px] uppercase font-bold tracking-widest opacity-60">
+                    My Token
+                  </span>
+                  <span className="font-mono text-5xl font-black tracking-tight select-all leading-tight mt-1">
+                    QC-{activeTokenId.toUpperCase()}
+                  </span>
+                  <p className="text-[11px] font-medium opacity-80 mt-1">
+                    Patient Name: <strong className="font-extrabold">{matchedPatient?.name || 'Rahul Sharma'}</strong>
+                  </p>
                 </div>
               </div>
-            ) : (
-              // MOCK DEMO SESSION FOR MANUAL MOCK ENTRY
-              <div className="space-y-4 flex-1 flex flex-col justify-center my-auto font-sans">
-                <motion.div
-                  initial={{ scale: 0.96, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className={`py-7 px-5 rounded-3.5xl border text-center relative overflow-hidden transition-all shadow-xl ${
-                    presetStatus === 'Being Called'
-                      ? 'border-blue-500 dark:border-blue-400 bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-blue-500/20 shadow-md'
-                      : darkMode 
-                        ? 'bg-slate-900 border-slate-800' 
-                        : 'bg-white border-slate-100 shadow-slate-100/60'
-                  }`}
-                  id={`mock-token-ticket-${tokenId}`}
-                >
-                  <div className="absolute top-2 right-2 bg-blue-500/10 text-blue-600 px-2.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider select-none dark:bg-blue-400/15 dark:text-blue-400">
-                    SIMULATION MODE
-                  </div>
 
-                  <div className="flex justify-center mb-1">
-                    {presetStatus === 'Being Called' ? (
-                      <span className="px-3 py-1.5 rounded-xl bg-white text-blue-700 text-[10px] font-black tracking-wider animate-bounce uppercase shadow-sm">
-                        🛎️ Proceed to Room
-                      </span>
-                    ) : presetStatus === 'Completed' ? (
-                      <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15 text-[10px] font-extrabold tracking-wider uppercase">
-                        ✅ treatment complete
-                      </span>
-                    ) : (
-                      <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wider uppercase border ${
-                        darkMode ? 'bg-slate-800/80 text-slate-350 border-slate-700' : 'bg-slate-50 text-slate-655 border-slate-150'
-                      }`}>
-                        📋 Queue Standby
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Mock Information Representation */}
-                  <div className="py-4">
-                    <span className={`font-mono text-[56px] font-black tracking-tighter ${
-                      presetStatus === 'Being Called' ? 'text-white' : 'text-blue-600 dark:text-blue-400'
-                    }`}>
-                      QC-{tokenId.toUpperCase()}
-                    </span>
-                    <p className={`text-xs mt-1.5 font-medium ${presetStatus === 'Being Called' ? 'text-blue-105' : 'text-slate-500 dark:text-slate-400'}`}>
-                      Patient: <strong className="font-extrabold text-slate-800 dark:text-slate-200">Demo User (Token #{tokenId})</strong>
-                    </p>
-                    <p className={`text-[10px] mt-1 ${presetStatus === 'Being Called' ? 'text-white/60' : 'text-slate-405'}`}>
-                      Purpose: General Consultation Diagnosis
-                    </p>
-                  </div>
-
-                  <hr className={`border-dashed my-3.5 ${presetStatus === 'Being Called' ? 'border-white/20' : 'border-slate-150 dark:border-slate-800'}`} />
-
-                  {/* Standard simulated bar */}
-                  <div className="space-y-1.5 mb-5 select-none text-left">
-                    <div className="flex justify-between text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider px-1">
-                      <span>Waiting</span>
-                      <span>Called</span>
-                      <span>Complete</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden relative">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          presetStatus === 'Waiting' 
-                            ? 'w-[33%] bg-blue-500' 
-                            : presetStatus === 'Being Called' 
-                              ? 'w-[70%] bg-blue-400' 
-                              : 'w-full bg-emerald-500'
-                        }`}
-                      />
-                    </div>
-                  </div>
-
-                  {presetStatus === 'Being Called' ? (
-                    <div className="space-y-1.5">
-                      <div className="font-sans font-extrabold text-[15px] text-white">
-                        Proceed immediately to: <span className="underline decoration-wavy text-amber-300 font-black">Examination Room B</span>
-                      </div>
-                      <p className="text-[11px] text-blue-105 max-w-[280px] mx-auto leading-relaxed">
-                        Medical staff are prepared to start your diagnosis.
-                      </p>
-                    </div>
-                  ) : presetStatus === 'Completed' ? (
-                    <div className="space-y-1">
-                      <div className="font-sans font-extrabold text-[14px] text-emerald-500 flex items-center justify-center gap-1.5">
-                        <CheckCircle2 className="w-5 h-5" />
-                        <span>Treatment complete</span>
-                      </div>
-                      <p className="text-[11px] text-slate-505 dark:text-slate-450 max-w-[280px] mx-auto leading-relaxed">
-                        The session is locked. Prescriptions are written. Thank you!
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className={`p-3 rounded-2xl border text-left ${darkMode ? 'bg-slate-950/60 border-slate-850' : 'bg-slate-50 border-slate-150/70'}`}>
-                        <div className="text-[9.5px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider">Lobby Head</div>
-                        <div className="text-[17px] font-black text-blue-600 dark:text-blue-400 mt-1">
-                          4 Patients
-                        </div>
-                      </div>
-
-                      <div className={`p-3 rounded-2xl border text-left ${darkMode ? 'bg-slate-950/60 border-slate-850' : 'bg-slate-50 border-slate-150/70'}`}>
-                        <div className="text-[9.5px] font-bold text-slate-455 dark:text-slate-500 uppercase tracking-wider">Est. wait</div>
-                        <div className="text-[17px] font-black text-emerald-500 mt-1">
-                          32 Minutes
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-
-                {/* State simulator panel for testing requested */}
-                <div className={`p-3.5 rounded-3xl border ${
-                  darkMode ? 'bg-slate-900 border-slate-850' : 'bg-slate-50 border-slate-150'
-                }`}>
-                  <span className="text-[9.5px] font-extrabold text-blue-500 uppercase tracking-widest block mb-2.5 text-center">
-                    Interactive Simulation Controls
+              {/* THREE COLUMN HIGHLIGHT METRICS (Patients Ahead / Estimated Wait) */}
+              <div className="grid grid-cols-3 border-b border-slate-150 dark:border-slate-800/80">
+                {/* Now Serving Column */}
+                <div className="p-4 text-center border-r border-slate-150 dark:border-slate-800/80">
+                  <span className="text-[9px] uppercase font-black text-slate-400 dark:text-slate-500 block mb-1">
+                    Now Serving
                   </span>
+                  <strong className="font-mono text-lg font-black text-blue-600 dark:text-blue-400 animate-pulse">
+                    QC-{simulatedCurrentToken}
+                  </strong>
+                </div>
+
+                {/* Patients Ahead Column */}
+                <div className="p-4 text-center border-r border-slate-150 dark:border-slate-800/80">
+                  <span className="text-[9px] uppercase font-black text-slate-400 dark:text-slate-500 block mb-1">
+                    Patients Ahead
+                  </span>
+                  <strong className="font-sans text-lg font-black text-slate-800 dark:text-white">
+                    {simulatedStatus === 'Waiting' ? simulatedPatientsAhead : 0}
+                  </strong>
+                </div>
+
+                {/* Estimated Wait Column */}
+                <div className="p-4 text-center">
+                  <span className="text-[9px] uppercase font-black text-slate-400 dark:text-slate-500 block mb-1">
+                    Estimated Wait
+                  </span>
+                  <strong className="font-sans text-lg font-black text-emerald-500">
+                    {simulatedStatus === 'Waiting' ? `${simulatedWaitMinutes}m` : '0m'}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-6">
+                
+                {/* SECTION: Queue Progress Visualization */}
+                <div className="space-y-3.5" id="queue-progress-display">
+                  <div className="flex justify-between items-center px-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                      <TrendingUp className="w-4 h-4 text-blue-500" />
+                      <span>Queue Progress</span>
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-500">
+                      Current Token: {simulatedCurrentToken} of {activeTokenId}
+                    </span>
+                  </div>
+
+                  {/* Node Stepper Trail */}
+                  <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-150 dark:border-slate-800/60 space-y-4">
+                    <div className="flex items-center justify-between relative px-2">
+                      {/* Connection Line Behind */}
+                      <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-1 bg-slate-200 dark:bg-slate-800 z-0 rounded-full overflow-hidden">
+                        <motion.div 
+                          initial={{ width: '0%' }}
+                          animate={{ width: `${calculateProgressPercent()}%` }}
+                          transition={{ duration: 0.6, ease: 'easeInOut' }}
+                          className="h-full bg-blue-600 rounded-full" 
+                        />
+                      </div>
+
+                      {/* Map through Progress Steps */}
+                      {progressSteps.map((stepNum, idx) => {
+                        const isNumber = typeof stepNum === 'number';
+                        const isCurrent = isNumber && stepNum === simulatedCurrentToken;
+                        const isMyToken = isNumber && String(stepNum) === activeTokenId.replace(/qc-/i, '');
+                        const isPassed = isNumber && stepNum < simulatedCurrentToken;
+
+                        return (
+                          <div key={idx} className="flex flex-col items-center relative z-10">
+                            <motion.div
+                              whileHover={isNumber ? { scale: 1.15 } : {}}
+                              className={`w-7.5 h-7.5 rounded-full flex items-center justify-center text-[10px] font-mono font-black transition-all border ${
+                                isPassed
+                                  ? 'bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-900 dark:text-blue-300'
+                                  : isCurrent
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/30'
+                                    : isMyToken
+                                      ? 'bg-indigo-100 border-indigo-400 text-indigo-700 dark:bg-indigo-950 dark:border-indigo-900 dark:text-indigo-400 font-extrabold'
+                                      : !isNumber
+                                        ? 'bg-transparent border-transparent text-slate-400'
+                                        : 'bg-white border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-800'
+                              }`}
+                            >
+                              {isPassed ? (
+                                <Check className="w-3 h-3 text-blue-600 dark:text-blue-300" />
+                              ) : (
+                                <span>{isNumber ? stepNum : '...'}</span>
+                              )}
+                            </motion.div>
+                            {isNumber && (
+                              <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-tight">
+                                {isCurrent ? 'Now' : isMyToken ? 'Mine' : ''}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Quick progress percent loader */}
+                    <div className="flex justify-between items-center text-[9px] font-semibold text-slate-400 px-1">
+                      <span>In-Processing Progress</span>
+                      <span>{calculateProgressPercent()}% Completed</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION: Queue Timeline */}
+                <div className="space-y-3.5" id="queue-timeline-display">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-blue-400" />
+                    <span>Queue Timeline</span>
+                  </span>
+
+                  <div className="space-y-3.5 pl-2 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-100 dark:before:bg-slate-800">
+                    
+                    {/* Item 1: Token Generated */}
+                    <div className="flex items-start gap-4 text-left relative">
+                      <div className="w-5.5 h-5.5 rounded-full bg-emerald-500 border border-emerald-500 text-white flex items-center justify-center flex-shrink-0 z-10 shadow-xs">
+                        <Check className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <h5 className="text-[11.5px] font-bold text-slate-800 dark:text-slate-200">
+                          ✓ Token Generated
+                        </h5>
+                        <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
+                          Walk-in checklist verified at {getSimulatedJoinTimeFormatted()}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Item 2: Waiting In Queue */}
+                    <div className="flex items-start gap-4 text-left relative">
+                      <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
+                        simulatedStatus === 'Waiting' || simulatedStatus === 'Being Called' || simulatedStatus === 'Completed'
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : 'bg-white border-slate-200 text-slate-450 dark:bg-slate-900 dark:border-slate-800'
+                      }`}>
+                        <Check className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <h5 className="text-[11.5px] font-bold text-slate-800 dark:text-slate-200">
+                          ✓ Waiting In Queue
+                        </h5>
+                        <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
+                          Priority sorted. Diagnostics pending active standby line.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Item 3: Being Called */}
+                    <div className="flex items-start gap-4 text-left relative">
+                      <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
+                        simulatedStatus === 'Being Called' || simulatedStatus === 'Completed'
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20'
+                          : 'bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800'
+                      }`}>
+                        {simulatedStatus === 'Being Called' ? (
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                          </span>
+                        ) : simulatedStatus === 'Completed' ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : (
+                          <span className="text-[8px] font-bold">3</span>
+                        )}
+                      </div>
+                      <div>
+                        <h5 className={`text-[11.5px] font-extrabold ${
+                          simulatedStatus === 'Being Called' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-800 dark:text-slate-200'
+                        }`}>
+                          {simulatedStatus === 'Being Called' ? '🛎️ Being Called Now' : '○ Being Called'}
+                        </h5>
+                        <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
+                          {simulatedStatus === 'Being Called' 
+                            ? 'Please proceed immediately to Consulting Room B.' 
+                            : 'Patient called by clinician for face-to-face diagnosis.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Item 4: Consultation Complete */}
+                    <div className="flex items-start gap-4 text-left relative">
+                      <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
+                        simulatedStatus === 'Completed'
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : 'bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800'
+                      }`}>
+                        {simulatedStatus === 'Completed' ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : (
+                          <span className="text-[8px] font-bold">4</span>
+                        )}
+                      </div>
+                      <div>
+                        <h5 className="text-[11.5px] font-bold text-slate-800 dark:text-slate-200">
+                          ○ Consultation Complete
+                        </h5>
+                        <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
+                          Medical treatment completed, prescription generated.
+                        </p>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* SECTION: My Queue Information (Additional Section requested) */}
+                <div className="space-y-3.5 pt-1.5" id="my-queue-information-section">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <Compass className="w-4 h-4 text-indigo-500" />
+                    <span>My Queue Information</span>
+                  </span>
+
+                  <div className={`p-4 rounded-2.5xl border grid grid-cols-2 gap-3.5 text-left ${
+                    darkMode ? 'bg-slate-900/40 border-slate-800/80' : 'bg-slate-50 border-slate-200/80'
+                  }`}>
+                    <div>
+                      <span className="text-[8.5px] font-bold text-slate-400 block uppercase">
+                        Token Number
+                      </span>
+                      <strong className="text-sm font-mono font-black text-slate-800 dark:text-slate-100 block mt-0.5">
+                        QC-{activeTokenId.toUpperCase()}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span className="text-[8.5px] font-bold text-slate-400 block uppercase">
+                        Join Time
+                      </span>
+                      <strong className="text-sm font-sans font-black text-slate-800 dark:text-slate-100 block mt-0.5">
+                        {getSimulatedJoinTimeFormatted()}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span className="text-[8.5px] font-bold text-slate-400 block uppercase">
+                        Queue Position
+                      </span>
+                      <strong className="text-sm font-sans font-black text-slate-800 dark:text-slate-100 block mt-0.5">
+                        #{patientPos}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span className="text-[8.5px] font-bold text-slate-400 block uppercase">
+                        Est. Call Time
+                      </span>
+                      <strong className="text-sm font-sans font-black text-emerald-505 block mt-0.5">
+                        {getSimulatedEstimatedCallTime()}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* ----------------- INTERACTIVE SIMULATOR CARD PANEL ----------------- */}
+            <div className={`p-4.5 rounded-3.5xl border border-dashed text-left transition-all ${
+              darkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-blue-50/25 border-blue-150'
+            }`}>
+              <div className="flex items-center justify-between mb-3.5">
+                <span className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-blue-500" />
+                  <span>Interactive Simulation Lounge</span>
+                </span>
+                
+                <span className="text-[8px] bg-blue-500 text-white px-2 py-0.5 rounded-full font-black uppercase">
+                  Sandbox Active
+                </span>
+              </div>
+
+              <p className="text-[11px] text-slate-500 mb-4 leading-normal">
+                Adjust clinic parameters below to watch timelines, progress bars, calltimes, and statuses transition instantly!
+              </p>
+
+              <div className="space-y-4">
+                {/* 1. Status Stepper */}
+                <div className="space-y-1.5">
+                  <label className="text-[9.5px] font-black uppercase text-slate-450 dark:text-slate-500">
+                    Switch Queue Status
+                  </label>
                   <div className="grid grid-cols-3 gap-1.5">
                     {(['Waiting', 'Being Called', 'Completed'] as const).map(st => (
                       <button
                         key={st}
-                        onClick={() => setPresetStatus(st)}
-                        className={`py-2 text-[10px] font-bold rounded-xl transition-all cursor-pointer ${
-                          presetStatus === st
+                        onClick={() => {
+                          setIsSimulating(true);
+                          setSimulatedStatus(st);
+                        }}
+                        className={`py-2 text-[10.5px] font-extrabold rounded-xl transition-all cursor-pointer ${
+                          simulatedStatus === st
                             ? 'bg-blue-600 text-white shadow-xs'
                             : darkMode
-                              ? 'bg-slate-950 hover:bg-slate-850 text-slate-400'
-                              : 'bg-white hover:bg-slate-100 text-slate-550 border border-slate-205'
+                              ? 'bg-slate-950 hover:bg-slate-900 text-slate-400 border border-slate-800'
+                              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
                         }`}
                       >
                         {st}
@@ -493,47 +732,136 @@ export const Patient: React.FC = () => {
                     ))}
                   </div>
                 </div>
+
+                {/* 2. Slide Controls */}
+                <div className="grid grid-cols-2 gap-3.5 pt-1">
+                  {/* Current Served Token Slider */}
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase flex justify-between">
+                      <span>Currently Serving</span>
+                      <strong className="text-blue-500 font-mono">QC-{simulatedCurrentToken}</strong>
+                    </label>
+                    <input
+                      type="range"
+                      min="100"
+                      max={String(parseInt(activeTokenId.replace(/qc-/i, ''), 10) + 1 || 115)}
+                      value={simulatedCurrentToken}
+                      onChange={(e) => {
+                        setIsSimulating(true);
+                        setSimulatedCurrentToken(parseInt(e.target.value));
+                      }}
+                      className="w-full accent-blue-600 h-1 bg-slate-250 dark:bg-slate-800 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Patients Ahead Slider */}
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase flex justify-between">
+                      <span>Patients Ahead</span>
+                      <strong className="text-indigo-500 font-sans">{simulatedPatientsAhead}</strong>
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="15"
+                      value={simulatedPatientsAhead}
+                      onChange={(e) => {
+                        setIsSimulating(true);
+                        setSimulatedPatientsAhead(parseInt(e.target.value));
+                      }}
+                      className="w-full accent-indigo-600 h-1 bg-slate-250 dark:bg-slate-800 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Reset button to sync back with standard list defaults */}
+                <button
+                  type="button"
+                  onClick={() => setIsSimulating(false)}
+                  className={`w-full py-2 text-[9.5px] font-black uppercase tracking-wider rounded-xl text-center border cursor-pointer transition-colors ${
+                    darkMode
+                      ? 'border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-400'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                  }`}
+                >
+                  🔄 Reset Sandbox (Sync with Real Clinic List)
+                </button>
+              </div>
+            </div>
+
+            {/* QUICK PASSPORT SWITCHER Pill Bar */}
+            {recentTokens.length > 0 && (
+              <div className={`p-4 rounded-3xl border border-dashed text-left ${
+                darkMode ? 'bg-slate-900/40 border-slate-850' : 'bg-slate-50 border-slate-150'
+              }`}>
+                <div className="flex items-center gap-1.5 text-[9.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2.5">
+                  <History className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Recently Viewed Passes</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {recentTokens.map(tk => (
+                    <button
+                      key={tk}
+                      onClick={() => handleQuickReopen(tk)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                        (tk === activeTokenId || `qc-${tk}` === activeTokenId.toLowerCase())
+                          ? 'bg-blue-600 text-white'
+                          : darkMode
+                            ? 'bg-slate-950 hover:bg-slate-850 border border-slate-800 text-slate-350'
+                            : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-750 shadow-3xs'
+                      }`}
+                    >
+                      <span className={(tk === activeTokenId || `qc-${tk}` === activeTokenId.toLowerCase()) ? 'text-white' : 'text-blue-500'}>QC-{tk}</span>
+                      <ChevronRight className="w-3 h-3 text-slate-400" />
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* Spacer branding footer */}
+            <div className="text-center pt-3 select-none font-mono text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Queue Cure '26 • Real-time Terminal
+            </div>
           </motion.div>
         </AnimatePresence>
       ) : (
-        /* -----------------------------------------------------
-            VIEW B: THE COMBINED TOKEN PORTAL (SECTION 1, divider, SECTION 3)
-            ----------------------------------------------------- */
+        /* ====================================================================
+           PORTAL VIEW (Home tracking landing console)
+           ==================================================================== */
         <motion.div
-          key="portal-[/patient]"
+          key="portal-landing-console"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="space-y-4 flex-1 flex flex-col justify-between"
         >
-          {/* Header Layout requested */}
-          <div className="text-center pt-3 pb-1">
-            <div className="inline-flex items-center gap-1.5 text-slate-450 dark:text-slate-500 text-[10px] font-bold tracking-tight mb-2">
+          {/* Brand header */}
+          <div className="text-center pt-4 pb-2">
+            <div className="inline-flex items-center gap-1.5 text-slate-400 dark:text-slate-500 text-[10px] font-bold tracking-tight mb-2 uppercase">
               <Heart className="w-3.5 h-3.5 text-blue-500 fill-blue-500/10" />
               <span>Queue Cure '26</span>
               <span className="text-slate-300">•</span>
-              <span className="text-blue-500">Patient Lounge</span>
+              <span className="text-blue-500">Standby Lounge</span>
             </div>
 
             <h2 className="font-sans font-extrabold text-[22px] text-slate-900 dark:text-white tracking-tight">
               Track Your Queue
             </h2>
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-[310px] mx-auto mt-1 leading-relaxed">
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 max-w-[310px] mx-auto mt-1 leading-relaxed">
               Enter your token number or scan the QR code provided by the receptionist.
             </p>
           </div>
 
-          {/* SECTION 1: Manual Token Tracking Card */}
-          <div className={`p-4.5 rounded-3xl border transition-all ${
+          {/* Manual input ticket form */}
+          <div className={`p-5 rounded-3.5xl border transition-all ${
             darkMode 
-              ? 'bg-slate-900/95 border-slate-800 shadow-lg' 
-              : 'bg-white border-slate-100 shadow-md shadow-slate-100/60'
+              ? 'bg-slate-900 border-slate-800 shadow-xl' 
+              : 'bg-white border-slate-150 shadow-md'
           }`}
           id="patient-manual-card"
           >
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-40s dark:text-slate-500 block mb-3.5 pl-0.5">
-              Enter Token Number
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-3 pl-0.5">
+              Enter Ticket Number
             </h3>
 
             <form onSubmit={handleTrackToken} className="space-y-3.5">
@@ -554,21 +882,21 @@ export const Patient: React.FC = () => {
                       ? 'border-rose-450 bg-rose-50/10 text-rose-500'
                       : darkMode 
                         ? 'bg-slate-950 border-slate-800 text-white focus:border-blue-500' 
-                        : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:border-blue-500 shadow-2xs'
+                        : 'bg-slate-50 border-slate-205 text-slate-800 focus:bg-white focus:border-blue-500 shadow-2xs'
                   }`}
                 />
               </div>
 
-              {/* Input validation diagnostics requested */}
+              {/* Feedbacks */}
               <AnimatePresence>
                 {searchError && (
                   <motion.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
-                    className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-650 dark:text-rose-400 text-[11px] font-semibold flex items-center gap-2"
+                    className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-[10.5px] font-bold flex items-center gap-2"
                   >
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-500" />
                     <span>{searchError}</span>
                   </motion.div>
                 )}
@@ -577,23 +905,20 @@ export const Patient: React.FC = () => {
                   <motion.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold flex items-center justify-center gap-2"
+                    className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10.5px] font-bold flex items-center justify-center gap-2 animate-pulse"
                   >
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                    </span>
-                    <span>Validating token details...</span>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-500" />
+                    <span>Locating live token...</span>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Track Queue Button with press scaling requested */}
+              {/* Action Submit */}
               <motion.button
                 whileTap={{ scale: 0.98 }}
                 type="submit"
                 disabled={searchSuccess}
-                className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-500 dark:hover:bg-blue-600 text-xs font-bold shadow-md shadow-blue-500/15 cursor-pointer flex items-center justify-center gap-1.5"
+                className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-500 dark:hover:bg-blue-600 text-xs font-extrabold shadow-md shadow-blue-500/15 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Smartphone className="w-4 h-4" />
                 <span>Track Queue</span>
@@ -601,20 +926,19 @@ export const Patient: React.FC = () => {
             </form>
           </div>
 
-          {/* SECTION 2: Divider */}
+          {/* Divider */}
           <div className="flex items-center text-center justify-center select-none py-1">
             <div className="h-[1px] w-20 bg-slate-200 dark:bg-slate-800" />
-            <span className="mx-3.5 font-mono text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+            <span className="mx-3 font-mono text-[9px] font-extrabold text-slate-400 uppercase tracking-widest">
               OR
             </span>
             <div className="h-[1px] w-20 bg-slate-200 dark:bg-slate-800" />
           </div>
 
-          {/* SECTION 3: QR Code Tracking Card */}
-          <div className={`p-4.5 rounded-3xl border transition-all ${
+          <div className={`p-4.5 rounded-3.5xl border transition-all ${
             darkMode 
-              ? 'bg-slate-900/95 border-slate-800 shadow-lg' 
-              : 'bg-white border-slate-100 shadow-md shadow-slate-100/60'
+              ? 'bg-slate-900 border-slate-800 shadow-xl' 
+              : 'bg-white border-slate-150 shadow-md'
           }`}
           id="patient-qr-card"
           >
@@ -622,17 +946,17 @@ export const Patient: React.FC = () => {
               <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
                 <Scan className="w-5.5 h-5.5" />
               </div>
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-450 dark:text-slate-500">
+              <div className="text-left">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   Scan QR Code
                 </h3>
-                <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1 leading-normal">
+                <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 leading-normal">
                   Aim at the barcoded ticket on your receipt or registration screen.
                 </p>
               </div>
             </div>
 
-            {/* Launch QR view launcher button */}
+            {/* Launch Scanner Viewfinder */}
             <motion.button
               whileTap={{ scale: 0.98 }}
               onClick={() => {
@@ -641,8 +965,8 @@ export const Patient: React.FC = () => {
               }}
               className={`w-full py-3 rounded-2xl border font-bold text-xs mt-3.5 flex items-center justify-center gap-2 cursor-pointer transition-colors ${
                 darkMode
-                  ? 'border-slate-800 bg-slate-950 hover:bg-slate-850 text-white'
-                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-750 shadow-2xs'
+                  ? 'border-slate-800 bg-slate-950 hover:bg-slate-900 text-white'
+                  : 'border-slate-205 bg-slate-50 hover:bg-slate-100 text-slate-750'
               }`}
             >
               <Camera className="w-4.5 h-4.5 text-blue-500" />
@@ -650,43 +974,43 @@ export const Patient: React.FC = () => {
             </motion.button>
           </div>
 
-          {/* ADDITIONAL SECTION: Recently Tracked Tokens History */}
+          {/* Recently Tracked History Panel */}
           {recentTokens.length > 0 && (
-            <div className={`p-4 rounded-2.5xl border border-dashed text-left ${
+            <div className={`p-4 rounded-3.5xl border border-dashed text-left ${
               darkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
             }`}>
               <div className="flex items-center gap-1.5 text-[9.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2.5">
                 <History className="w-3.5 h-3.5 text-blue-500" />
                 <span>Recently Tracked Tickets</span>
               </div>
-              <div className="flex flex-wrap gap-2.5">
+              <div className="flex flex-wrap gap-2">
                 {recentTokens.map(tk => (
                   <button
                     key={tk}
                     onClick={() => handleQuickReopen(tk)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
                       darkMode
-                        ? 'bg-slate-950 hover:bg-slate-850 text-white text-slate-350'
-                        : 'bg-white hover:bg-slate-100 border border-slate-205 text-slate-750 shadow-3xs'
+                        ? 'bg-slate-950 hover:bg-slate-900 border border-slate-800 text-white'
+                        : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-750'
                     }`}
                   >
                     <span className="font-mono text-blue-500">QC-{tk}</span>
-                    <ChevronRight className="w-3 h-3 text-slate-400" />
+                    <ChevronRight className="w-3 h-3 text-slate-405" />
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Sticky Branding Footer */}
-          <div className="pt-2 text-center select-none font-mono text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-            Queue Cure '26 • Real-time Triage v1.2
+          {/* Branding footer */}
+          <div className="pt-2 text-center select-none font-mono text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+            Queue Cure '26 • Portal v1.2
           </div>
         </motion.div>
       )}
 
       {/* -----------------------------------------------------
-          MODAL: FULL QR CAMERA VIEWPORT & SIMULATED RECOGNITION
+          MODAL: CAMERA VIEWPORT SCENE (WITH DIRECT TEST SCAN CLICKS)
           ----------------------------------------------------- */}
       <AnimatePresence>
         {isScannerOpen && (
@@ -694,10 +1018,10 @@ export const Patient: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex flex-col justify-between p-6 select-none"
+            className="fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-md flex flex-col justify-between p-6 select-none"
             id="camera-viewfinder-overlay"
           >
-            {/* Nav Header */}
+            {/* Viewfinder header */}
             <div className="flex items-center justify-between">
               <span className="font-mono text-[9px] uppercase tracking-widest text-slate-400 font-bold">
                 Triage Scanner Viewport
@@ -711,22 +1035,22 @@ export const Patient: React.FC = () => {
               </button>
             </div>
 
-            {/* Simulated / Live Camera Box with viewfinder graphics */}
+            {/* Viewfinder frame */}
             <div className="flex-1 flex flex-col justify-center items-center my-6">
-              <div className="relative w-full max-w-[290px] aspect-square rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl bg-black">
+              <div className="relative w-full max-w-[280px] aspect-square rounded-3xl overflow-hidden border-2 border-white/25 shadow-2xl bg-black">
                 
-                {/* Visual Camera Frames / Corners */}
+                {/* Scanner Frame View finder targets */}
                 <div className="absolute top-4 left-4 w-6 h-6 border-t-4 border-l-4 border-blue-500 rounded-tl-md z-20" />
                 <div className="absolute top-4 right-4 w-6 h-6 border-t-4 border-r-4 border-blue-500 rounded-tr-md z-20" />
                 <div className="absolute bottom-4 left-4 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-md z-20" />
                 <div className="absolute bottom-4 right-4 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-md z-20" />
 
-                {/* Animated scan laser lines requested */}
+                {/* Scan Animation laser effect */}
                 {scannerState === 'active' && (
-                  <div className="absolute inset-x-0 h-[3px] bg-gradient-to-r from-transparent via-blue-500 to-transparent shadow-[0_0_15px_#3b82f6] animate-pulse z-20 top-[40%] motion-safe:animate-bounce-slow" />
+                  <div className="absolute inset-x-0 h-[3px] bg-blue-500 shadow-[0_0_15px_#3b82f6] z-20 top-[40%] animate-bounce" />
                 )}
 
-                {/* Real WebRTC HTML5 Video stream */}
+                {/* HTML5 video tag */}
                 <video
                   ref={videoRef}
                   autoPlay
@@ -737,38 +1061,37 @@ export const Patient: React.FC = () => {
                   }`}
                 />
 
-                {/* Viewport UI states */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-5 text-center z-10 bg-black/40">
+                {/* Overlay Text / Graphics for status */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-5 text-center z-10 bg-black/45">
                   {scannerState === 'permission_request' && (
                     <div className="space-y-3 animate-pulse">
                       <div className="p-3.5 rounded-2xl bg-blue-500/20 text-blue-400 inline-flex">
                         <Camera className="w-6 h-6" />
                       </div>
-                      <p className="text-white font-bold text-xs">Requesting Camera Authorization</p>
-                      <p className="text-slate-400 text-[10px]">Please tap 'Allow' when requested by your browser.</p>
+                      <p className="text-white font-bold text-xs">Authorize Camera Access</p>
                     </div>
                   )}
 
                   {scannerState === 'loading' && (
-                    <div className="space-y-2.5">
-                      <RefreshCw className="w-5.5 h-5.5 text-blue-400 animate-spin mx-auto" />
-                      <p className="text-white font-bold text-xs uppercase tracking-wider">Starting Viewfinder...</p>
+                    <div className="space-y-2">
+                      <RefreshCw className="w-5 h-5 text-blue-400 animate-spin mx-auto" />
+                      <p className="text-white font-bold text-[11px] uppercase tracking-wider">Acquiring feed...</p>
                     </div>
                   )}
 
                   {scannerState === 'denied' && (
                     <div className="space-y-3 p-2">
                       <XCircle className="w-7 h-7 text-rose-500 mx-auto" />
-                      <p className="text-white font-bold text-xs text-rose-450">Camera access blocked</p>
-                      <p className="text-slate-400 text-[10px] leading-relaxed">
-                        To enable instant queue tracking, grant camera permission or use the manual entry fallback below.
+                      <p className="text-white font-bold text-xs">Authorization Blocked</p>
+                      <p className="text-slate-400 text-[9.5px]">
+                        Please check browser settings or use fallback buttons below!
                       </p>
                     </div>
                   )}
 
                   {scannerState === 'active' && (
-                    <div className="absolute bottom-4 left-0 right-0 text-center text-white font-bold text-[10px] tracking-wider uppercase drop-shadow-md">
-                      Center receipt QR code inside box
+                    <div className="absolute bottom-4 left-0 right-0 text-center text-white font-bold text-[9px] tracking-widest uppercase">
+                      Center Ticket barcode to capture
                     </div>
                   )}
 
@@ -778,55 +1101,54 @@ export const Patient: React.FC = () => {
                       animate={{ scale: 1, opacity: 1 }}
                       className="space-y-2"
                     >
-                      <div className="p-3 rounded-full bg-emerald-500 text-white inline-flex shadow-lg shadow-emerald-500/25">
-                        <CheckCircle2 className="w-8 h-8" />
+                      <div className="p-3 rounded-full bg-emerald-500 text-white inline-flex">
+                        <Check className="w-6 h-6" />
                       </div>
-                      <p className="text-emerald-400 font-bold text-xs uppercase tracking-wider">Ticket Scanned!</p>
-                      <p className="text-white font-black text-sm tracking-widest uppercase">Directing Live Pass</p>
+                      <p className="text-emerald-400 font-bold text-xs uppercase tracking-wider">Ticket Detected</p>
+                      <p className="text-white font-bold text-sm">Directing Live Status...</p>
                     </motion.div>
                   )}
 
                   {scannerState === 'error' && (
                     <div className="space-y-2 p-2">
-                      <XCircle className="w-7 h-7 text-rose-500 mx-auto" />
-                      <p className="text-white font-bold text-xs">Access Error</p>
-                      <p className="text-slate-400 text-[10px] leading-relaxed">
-                        An error occurred accessing video devices inside this sandboxed iFrame. Use quick mock targets below!
+                      <XCircle className="w-7 h-7 text-rose-400 mx-auto" />
+                      <p className="text-white font-bold text-xs">Sandbox feed inactive</p>
+                      <p className="text-slate-405 text-[9px] leading-relaxed">
+                        Use one of the pre-configured mock barcode options below for testing.
                       </p>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Simulation triggers so it always works for examiners inside iframe sandboxes */}
-              <div className="mt-6 w-full max-w-[290px] text-center">
+              {/* Simulation barcode options */}
+              <div className="mt-6 w-full max-w-[280px] text-center">
                 <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-2.5">
-                  Or Simulate Barcode Receipts
+                  Simulate QR Codes
                 </span>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => simulateSuccessfulScan('108')}
-                    className="py-2.5 px-3 bg-white/10 hover:bg-white/15 text-white rounded-xl text-[10px] font-black border border-white/15 cursor-pointer text-center flex items-center justify-center gap-1"
+                    className="py-2 px-3 bg-white/10 hover:bg-white/15 text-white rounded-xl text-[10.5px] font-black border border-white/10 cursor-pointer flex items-center justify-center gap-1"
                   >
-                    <Play className="w-3 h-3 text-emerald-400 fill-emerald-400" />
+                    <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
                     <span>Scan QC-108</span>
                   </button>
                   <button
                     onClick={() => simulateSuccessfulScan('112')}
-                    className="py-2.5 px-3 bg-white/10 hover:bg-white/15 text-white rounded-xl text-[10px] font-black border border-white/15 cursor-pointer text-center flex items-center justify-center gap-1"
+                    className="py-2 px-3 bg-white/10 hover:bg-white/15 text-white rounded-xl text-[10.5px] font-black border border-white/10 cursor-pointer flex items-center justify-center gap-1"
                   >
-                    <Play className="w-3 h-3 text-emerald-400 fill-emerald-400" />
+                    <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
                     <span>Scan QC-112</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Cancel Button */}
             <div className="text-center">
               <button
                 onClick={closeCameraScanner}
-                className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                className="text-xs text-slate-400 hover:text-white underline cursor-pointer font-semibold"
               >
                 Go back to manual input tracker
               </button>
@@ -834,6 +1156,7 @@ export const Patient: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
     </div>
   );
 };
