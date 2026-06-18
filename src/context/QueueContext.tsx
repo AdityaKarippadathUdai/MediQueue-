@@ -38,21 +38,35 @@ interface QueueContextType {
 const QueueContext = createContext<QueueContextType | undefined>(undefined);
 
 // Helper to convert api patient representation to app Patient representation
-export const transformToPatient = (apiPt: apiService.ApiPatientResponse): Patient => {
-  const tokenVal = apiPt.token || 100;
+export const transformToPatient = (apiPt: any): Patient => {
+  // If apiPt has a patient or data sub-property that looks like a patient
+  let pt = apiPt;
+  if (pt && typeof pt === 'object') {
+    if (pt.patient && typeof pt.patient === 'object') {
+      pt = pt.patient;
+    } else if (pt.data && typeof pt.data === 'object' && !Array.isArray(pt.data)) {
+      pt = pt.data;
+    }
+  }
+
+  // Supply solid fallbacks to avoid any runtime failures
+  const idVal = pt?._id || pt?.id || Math.random().toString(36).substring(2, 9);
+  const nameVal = pt?.name || 'Unknown Patient';
+  const tokenVal = pt?.token !== undefined ? pt.token : 100;
+  
   // Format token like QC-105
   const ticketNumber = typeof tokenVal === 'number' ? `QC-${tokenVal}` : String(tokenVal);
   return {
-    id: apiPt._id,
+    id: idVal,
     ticketNumber: ticketNumber.startsWith('QC-') ? ticketNumber : `QC-${ticketNumber}`,
-    name: apiPt.name,
-    purpose: apiPt.purpose || 'General Consultation',
-    status: apiPt.status || 'waiting',
-    joinedAt: apiPt.joinedAt || new Date().toISOString(),
-    calledAt: apiPt.calledAt,
-    estimatedWaitMinutes: apiPt.priority === 'urgent' ? 8 : 16,
-    priority: apiPt.priority || 'normal',
-    assignedRoom: apiPt.assignedRoom,
+    name: nameVal,
+    purpose: pt?.purpose || 'General Consultation',
+    status: pt?.status || 'waiting',
+    joinedAt: pt?.joinedAt || new Date().toISOString(),
+    calledAt: pt?.calledAt,
+    estimatedWaitMinutes: pt?.priority === 'urgent' ? 8 : 16,
+    priority: pt?.priority || 'normal',
+    assignedRoom: pt?.assignedRoom,
   };
 };
 
@@ -129,7 +143,22 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       // 1. Fetch Patients
       const apiPatients = await apiService.getPatients();
-      const mappedPatients = apiPatients.map(transformToPatient);
+      
+      let patientsArray: any[] = [];
+      if (Array.isArray(apiPatients)) {
+        patientsArray = apiPatients;
+      } else if (apiPatients && typeof apiPatients === 'object') {
+        const anyResponse = apiPatients as any;
+        if (Array.isArray(anyResponse.patients)) {
+          patientsArray = anyResponse.patients;
+        } else if (Array.isArray(anyResponse.data)) {
+          patientsArray = anyResponse.data;
+        } else if (Array.isArray(anyResponse.results)) {
+          patientsArray = anyResponse.results;
+        }
+      }
+
+      const mappedPatients = patientsArray.map(transformToPatient);
       setPatients(mappedPatients);
 
       // 2. Fetch Queue Status
