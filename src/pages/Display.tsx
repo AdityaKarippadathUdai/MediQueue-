@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQueue } from '../context/QueueContext';
 import { 
   Monitor, Volume2, VolumeX, BellRing, Sparkles, Clock, 
-  Tv, Play, Shield, RefreshCw, ChevronRight, Activity, HelpCircle, Flame
+  Tv, Play, Shield, RefreshCw, ChevronRight, Activity, HelpCircle, Flame,
+  ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -19,6 +21,7 @@ interface PresetCall {
 const PRESET_CALLS: PresetCall[] = [];
 
 export const Display: React.FC = () => {
+  const navigate = useNavigate();
   const { patients, darkMode, loading, error } = useQueue();
 
   // Screen layout modes - default to 'live' feed for real backend integration
@@ -205,6 +208,20 @@ export const Display: React.FC = () => {
 
         {/* CONTROLS PLUG: Mute & Source selectors beautifully displayed */}
         <div className="flex flex-wrap items-center gap-2.5">
+          
+          {/* Exit / Return Option */}
+          <button
+            onClick={() => navigate('/')}
+            className={`px-3.5 py-1.5 rounded-xl border text-xs font-black uppercase transition-all flex items-center gap-1.5 cursor-pointer ${
+              darkMode 
+                ? 'bg-slate-900 border-slate-800 text-slate-350 hover:bg-slate-800 hover:text-white' 
+                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+            title="Go Back to Home"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Exit Display</span>
+          </button>
           
           {/* Audio Chime/Voice Status Pill */}
           <button

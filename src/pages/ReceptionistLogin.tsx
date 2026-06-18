@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueue } from '../context/QueueContext';
 import { 
@@ -92,6 +92,33 @@ export const ReceptionistLogin: React.FC = () => {
       }
     }, 1500);
   };
+
+  // Add event listener to capture physical keyboard keypresses for PIN input
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (status === 'verifying' || status === 'success') return;
+
+      // Match numbers 0-9
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        handleDigitClick(e.key);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        handleBackspace();
+      } else if (e.key === 'Escape' || e.key === 'Delete') {
+        e.preventDefault();
+        handleClear();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleVerify();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [pin, status]);
 
   return (
     <div className="flex-1 flex flex-col justify-between px-5 pt-3 pb-6 relative overflow-hidden" id="clinic-pin-portal">
