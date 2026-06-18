@@ -37,7 +37,9 @@ const FullWidthLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
 const RootRouter: React.FC = () => {
   const location = useLocation();
-  const isFullWidth = ['/reception-login', '/receptionist', '/display'].includes(location.pathname);
+  
+  // High reliability pattern to detect if the route should be full-screen on desktop
+  const isFullWidth = /^\/(receptionist|reception-login|display)/i.test(location.pathname);
 
   // Smooth route transitions
   const animationProps = {
@@ -48,36 +50,25 @@ const RootRouter: React.FC = () => {
     className: "flex-1 flex flex-col w-full"
   };
 
-  if (isFullWidth) {
-    return (
-      <FullWidthLayout>
-        <AnimatePresence mode="wait">
-          <motion.div key={location.pathname} {...animationProps}>
-            <Routes location={location}>
-              <Route path="/reception-login" element={<ReceptionistLogin />} />
-              <Route path="/receptionist" element={<Receptionist />} />
-              <Route path="/display" element={<Display />} />
-            </Routes>
-          </motion.div>
-        </AnimatePresence>
-      </FullWidthLayout>
-    );
-  }
-
   return (
-    <PatientLayout>
-      <AnimatePresence mode="wait">
-        <motion.div key={location.pathname} {...animationProps}>
-          <Routes location={location}>
-            <Route path="/" element={<Home />} />
-            <Route path="/patient" element={<Patient />} />
-            <Route path="/patient/:tokenId" element={<Patient />} />
-            {/* Catch-all safety routing going to patient home portal */}
-            <Route path="*" element={<Home />} />
-          </Routes>
-        </motion.div>
-      </AnimatePresence>
-    </PatientLayout>
+    <AnimatePresence mode="wait">
+      <motion.div key={location.pathname} {...animationProps}>
+        <Routes location={location}>
+          {/* Full-width responsive desktop screens */}
+          <Route path="/reception-login" element={<FullWidthLayout><ReceptionistLogin /></FullWidthLayout>} />
+          <Route path="/receptionist" element={<FullWidthLayout><Receptionist /></FullWidthLayout>} />
+          <Route path="/display" element={<FullWidthLayout><Display /></FullWidthLayout>} />
+
+          {/* Patient simulation mobile layout screens */}
+          <Route path="/" element={<PatientLayout><Home /></PatientLayout>} />
+          <Route path="/patient" element={<PatientLayout><Patient /></PatientLayout>} />
+          <Route path="/patient/:tokenId" element={<PatientLayout><Patient /></PatientLayout>} />
+          
+          {/* Fallback to Home wrapped in safe Patient frame */}
+          <Route path="*" element={<PatientLayout><Home /></PatientLayout>} />
+        </Routes>
+      </motion.div>
+    </AnimatePresence>
   );
 };
 
