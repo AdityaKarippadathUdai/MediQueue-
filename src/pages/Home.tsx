@@ -32,7 +32,7 @@ export const Home: React.FC = () => {
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        classclassName="text-center pt-2 pb-5"
+        className="text-center pt-2 pb-5"
       >
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-bold mb-3.5">
           <HeartPulse className="w-3.5 h-3.5" />
