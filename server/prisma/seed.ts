@@ -1,65 +1,84 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, TokenStatus } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding database...');
+  console.log('Seeding database with new schema...');
 
-  // 1. Seed QueueSettings
-  const settings = await prisma.queueSettings.upsert({
-    where: { id: 'singleton' },
+  const today = new Date().toISOString().split('T')[0];
+
+  // 1. Seed default Department
+  const department = await prisma.department.upsert({
+    where: { code: 'GEN' },
     update: {},
     create: {
-      id: 'singleton',
-      averageConsultationTime: 15,
+      name: 'General Medicine',
+      code: 'GEN',
     },
   });
-  console.log('Settings seeded:', settings);
+  console.log('Default department seeded:', department);
 
-  // 2. Seed default receptionist user
+  // 2. Seed QueueSettings for the department
+  const settings = await prisma.queueSettings.upsert({
+    where: { departmentId: department.id },
+    update: {},
+    create: {
+      currentToken: 0,
+      lastIssuedToken: 0,
+      resetDate: today,
+      departmentId: department.id,
+    },
+  });
+  console.log('Queue settings seeded:', settings);
+
+  // 3. Seed Receptionist user
   const hashedPassword = await bcrypt.hash('password123', 10);
-  const user = await prisma.user.upsert({
+  const receptionist = await prisma.receptionist.upsert({
     where: { username: 'receptionist' },
     update: {},
     create: {
       username: 'receptionist',
-      password: hashedPassword,
+      passwordHash: hashedPassword,
       name: 'Sarah Jenkins',
-      role: 'Receptionist',
-      room: 'Examination Room 1',
     },
   });
-  console.log('Receptionist user seeded:', {
-    id: user.id,
-    username: user.username,
-    name: user.name,
-    role: user.role,
-    room: user.room,
+  console.log('Receptionist seeded:', {
+    id: receptionist.id,
+    username: receptionist.username,
+    name: receptionist.name,
   });
 
-  // 3. Seed some initial patients to populate the queue
-  const initialPatients = [
-    { name: 'John Doe', purpose: 'General Checkup', priority: 'normal', status: 'waiting' },
-    { name: 'Jane Smith', purpose: 'Vaccination', priority: 'normal', status: 'waiting' },
-    { name: 'Robert Johnson', purpose: 'Cardiology Review', priority: 'urgent', status: 'waiting' },
-    { name: 'Emily Davis', purpose: 'Pediatric Checkup', priority: 'normal', status: 'completed' },
+  // 4. Seed initial QueueTokens for today
+  const mockTokens = [
+    { patientName: 'John Doe', patientPhone: '1234567890', tokenNumber: 1, status: TokenStatus.WAITING },
+    { patientName: 'Jane Smith', patientPhone: '0987654321', tokenNumber: 2, status: TokenStatus.WAITING },
+    { patientName: 'Robert Johnson', patientPhone: '5556667777', tokenNumber: 3, status: TokenStatus.WAITING },
+    { patientName: 'Emily Davis', patientPhone: '1112223333', tokenNumber: 4, status: TokenStatus.COMPLETED },
   ];
 
-  console.log('Seeding initial patients...');
-  for (const patient of initialPatients) {
-    const pt = await prisma.patient.create({
+  console.log('Seeding initial queue tokens...');
+  for (const tokenData of mockTokens) {
+    const token = await prisma.queueToken.create({
       data: {
-        name: patient.name,
-        purpose: patient.purpose,
-        priority: patient.priority,
-        status: patient.status,
+        tokenNumber: tokenData.tokenNumber,
+        patientName: tokenData.patientName,
+        patientPhone: tokenData.patientPhone,
+        status: tokenData.status,
+        date: today,
+        departmentId: department.id,
       },
     });
-    console.log(`Patient created: ${pt.name} (Token: QC-${pt.token}, Status: ${pt.status})`);
+    console.log(`Token created: QC-${token.tokenNumber} for ${token.patientName}`);
   }
 
-  console.log('Seeding completed successfully!');
+  // Update last issued token to 4
+  await prisma.queueSettings.update({
+    where: { departmentId: department.id },
+    data: { lastIssuedToken: 4 },
+  });
+
+  console.log('Database seeded successfully!');
 }
 
 main()
