@@ -9,7 +9,7 @@ export const MobileContainer: React.FC<MobileContainerProps> = ({ children }) =>
   const { darkMode } = useQueue();
 
   return (
-    <div className={`flex justify-center items-center min-h-screen w-full transition-colors duration-300 ${darkMode ? 'bg-[#0B0F19]' : 'bg-slate-100/70 p-0 sm:py-6'}`}>
+    <div className={`flex justify-center items-center min-h-screen w-full transition-colors duration-300 ${darkMode ? 'bg-[#0B0F19]' : 'bg-slate-100/70 p-0 sm:py-6 md:py-8'}`}>
       {/* 
         This acts as the physical-like wrapper shell for the app. 
         Highly optimized to deliver a 100% immersive app layout on smaller touchscreens, 
@@ -17,19 +17,19 @@ export const MobileContainer: React.FC<MobileContainerProps> = ({ children }) =>
       */}
       <div 
         id="mobile-device-shell"
-        className={`w-full max-w-[420px] min-h-screen sm:min-h-[840px] sm:h-[840px] flex flex-col relative transition-all duration-300 
+        className={`w-full max-w-[420px] md:max-w-[700px] lg:max-w-[900px] min-h-screen md:min-h-[600px] md:h-auto sm:min-h-[840px] sm:h-[840px] flex flex-col relative transition-all duration-300 
           ${darkMode ? 'bg-[#0F172A] text-slate-100 border-slate-800' : 'bg-[#F8FAFC] text-slate-800 border-slate-200/60'} 
           sm:rounded-[40px] sm:shadow-[0_24px_50px_-12px_rgba(15,23,42,0.15)] sm:border overflow-hidden`}
       >
         {/* Soft virtual notch indicator representing hardware alignment */}
-        <div className="hidden sm:flex justify-center absolute top-0 left-0 right-0 z-50 pointer-events-none">
+        <div className="hidden sm:flex md:hidden justify-center absolute top-0 left-0 right-0 z-50 pointer-events-none">
           <div className={`w-32 h-[18px] ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} rounded-b-2xl border-x border-b shadow-sm flex items-center justify-center`}>
             <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full"></div>
           </div>
         </div>
 
         {/* Space reserved for top hardware details simulation (Battery, Time, WiFi) */}
-        <div className="hidden sm:flex justify-between items-center px-6 pt-5 pb-2 text-[11px] font-medium tracking-tight select-none z-40 pointer-events-none">
+        <div className="hidden sm:flex md:hidden justify-between items-center px-6 pt-5 pb-2 text-[11px] font-medium tracking-tight select-none z-40 pointer-events-none">
           <div className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>9:41 AM</div>
           <div className="flex items-center gap-1.5">
             {/* WiFi Line Strength */}
@@ -46,12 +46,12 @@ export const MobileContainer: React.FC<MobileContainerProps> = ({ children }) =>
         </div>
 
         {/* Content stream area */}
-        <div className="flex-1 flex flex-col overflow-y-auto no-scrollbar pt-2 sm:pt-0 pb-6">
+        <div className="flex-1 flex flex-col overflow-y-auto no-scrollbar pt-2 sm:pt-0 pb-6 md:pb-8">
           {children}
         </div>
 
         {/* Virtual Bottom Pill Button (Simulating premium devices navigation swipe bar) */}
-        <div className="hidden sm:flex justify-center pb-2.5 pt-1 bg-transparent pointer-events-none select-none">
+        <div className="hidden sm:flex md:hidden justify-center pb-2.5 pt-1 bg-transparent pointer-events-none select-none">
           <div className={`w-32 h-1.5 ${darkMode ? 'bg-slate-700' : 'bg-slate-300'} rounded-full`}></div>
         </div>
       </div>

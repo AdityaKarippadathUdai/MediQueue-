@@ -165,7 +165,7 @@ export const Display: React.FC = () => {
 
   return (
     <div 
-      className={`flex-1 flex flex-col min-h-screen relative overflow-hidden font-sans select-none transition-colors duration-300 ${
+      className={`w-screen h-screen max-w-full max-h-full overflow-hidden flex flex-col relative font-sans select-none transition-colors duration-300 ${
         darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'
       }`} 
       id="public-tv-display-root"
