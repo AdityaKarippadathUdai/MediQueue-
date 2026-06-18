@@ -4,7 +4,7 @@ import { useQueue } from '../context/QueueContext';
 import { Patient, PriorityLevel, PatientStatus } from '../types';
 import { 
   Users, UserPlus, Volume2, CheckCircle2, UserX, AlertCircle, 
-  Trash2, Plus, ArrowRight, UserCheck, ShieldAlert 
+  Trash2, Plus, ArrowRight, UserCheck, ShieldAlert, Sparkles, Clock, BarChart3, HelpCircle, Flame, MonitorPlay
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { EmptyState } from '../components/EmptyState';
@@ -17,462 +17,574 @@ export const Receptionist: React.FC = () => {
     callPatient, completePatient, noShowPatient, removePatient, darkMode 
   } = useQueue();
 
-  // Redirect to login if receptionist is not signed in
+  // Route protection - send staff back to auth login if not authorized
   useEffect(() => {
     if (!receptionist) {
       navigate('/reception-login');
     }
   }, [receptionist, navigate]);
 
-  const [activeTab, setActiveTab] = useState<'waiting' | 'calling' | 'history'>('waiting');
-  
-  // Walk-in intake Form state
-  const [showIntakeDrawer, setShowIntakeDrawer] = useState(false);
-  const [patientName, setPatientName] = useState('');
-  const [purpose, setPurpose] = useState('General Consultation');
-  const [priority, setPriority] = useState<PriorityLevel>('normal');
-  const [successToast, setSuccessToast] = useState('');
+  // Receptionist-specific average consultation state
+  const [avgConsultMinutes, setAvgConsultMinutes] = useState(8);
+  const [showAvgEditOptions, setShowAvgEditOptions] = useState(false);
 
-  // Skeletons simulator when switching tabs to feel snappy and native
-  const [loadingList, setLoadingList] = useState(false);
-  useEffect(() => {
-    setLoadingList(true);
-    const timer = setTimeout(() => setLoadingList(false), 300);
-    return () => clearTimeout(timer);
-  }, [activeTab]);
+  // Add Patient Card Form Triage States
+  const [newPatientName, setNewPatientName] = useState('');
+  const [formError, setFormError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [successTicket, setSuccessTicket] = useState('');
+  const [visitPurpose, setVisitPurpose] = useState('General Consultation');
+  const [isUrgent, setIsUrgent] = useState(false);
+
+  // Auto-scrolling list reference or highlight helper
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   if (!receptionist) {
     return null;
   }
 
-  // Filter patients by active state
-  const getFilteredPatients = () => {
-    switch (activeTab) {
-      case 'waiting':
-        return patients.filter(p => p.status === 'waiting')
-          // Sort urgent ones first, then by joinedAt sequence
-          .sort((a, b) => {
-            if (a.priority === 'urgent' && b.priority !== 'urgent') return -1;
-            if (a.priority !== 'urgent' && b.priority === 'urgent') return 1;
-            return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
-          });
-      case 'calling':
-        return patients.filter(p => p.status === 'calling');
-      case 'history':
-        return patients.filter(p => p.status === 'completed' || p.status === 'no-show');
-      default:
-        return [];
-    }
-  };
+  // Active calling tickets
+  const callingPatients = patients.filter(p => p.status === 'calling');
+  const nowServingToken = callingPatients.length > 0 
+    ? callingPatients[callingPatients.length - 1].ticketNumber 
+    : 'QC-100';
 
-  const handleCreateIntake = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!patientName.trim()) return;
-    
-    const newPatient = addPatient(patientName, purpose, priority);
-    setPatientName('');
-    setPriority('normal');
-    setShowIntakeDrawer(false);
-    
-    // Display successful banner
-    setSuccessToast(`Ticket ${newPatient.ticketNumber} registered successfully.`);
-    setTimeout(() => setSuccessToast(''), 4000);
-  };
+  const nowServingName = callingPatients.length > 0 
+    ? callingPatients[callingPatients.length - 1].name 
+    : 'No active patient called';
 
-  const handleCallPatient = (id: string) => {
-    callPatient(id, receptionist.room);
-    setActiveTab('calling');
-  };
-
-  const handleLogout = () => {
-    logoutReceptionist();
-    navigate('/');
-  };
-
-  const filteredPatients = getFilteredPatients();
-
-  // Stats Counters
+  // Statistics
   const waitingCount = patients.filter(p => p.status === 'waiting').length;
-  const callingCount = patients.filter(p => p.status === 'calling').length;
-  const historyCount = patients.filter(p => p.status === 'completed' || p.status === 'no-show').length;
+  const completedCount = patients.filter(p => p.status === 'completed').length;
+
+  const handleAddPatientSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Explicit Validation Check 
+    if (!newPatientName.trim()) {
+      setFormError('Patient Name is required for queue entry.');
+      setSuccessMessage('');
+      return;
+    }
+
+    setFormError('');
+    const priorityCode: PriorityLevel = isUrgent ? 'urgent' : 'normal';
+    
+    // Call Context action to add persistent local patient
+    const registered = addPatient(newPatientName, visitPurpose, priorityCode);
+    
+    // Trigger Success feedback
+    setSuccessTicket(registered.ticketNumber);
+    setSuccessMessage(`Patient "${newPatientName}" registered successfully!`);
+    setNewPatientName('');
+    setIsUrgent(false);
+    setVisitPurpose('General Consultation');
+
+    // Highlight newly added item in list
+    setHighlightedId(registered.id);
+    setTimeout(() => setHighlightedId(null), 3000);
+
+    // Auto clear success Toast after 4 seconds
+    setTimeout(() => {
+      setSuccessMessage('');
+      setSuccessTicket('');
+    }, 4500);
+  };
+
+  // Automated "Call Next" from Waiting Stack
+  const handleCallNextTicket = () => {
+    // Get all waiting list sorted by priority (urgent first, then FIFO)
+    const waitingList = patients
+      .filter(p => p.status === 'waiting')
+      .sort((a, b) => {
+        if (a.priority === 'urgent' && b.priority !== 'urgent') return -1;
+        if (a.priority !== 'urgent' && b.priority === 'urgent') return 1;
+        return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+      });
+
+    if (waitingList.length === 0) {
+      alert('The standby waitlist is currently empty. Add a patient to call next.');
+      return;
+    }
+
+    const nextPatient = waitingList[0];
+    callPatient(nextPatient.id, receptionist.room);
+    
+    // Visual flash reminder
+    setSuccessMessage(`Now announcing Ticket ${nextPatient.ticketNumber}`);
+    setSuccessTicket(nextPatient.ticketNumber);
+    setTimeout(() => {
+      setSuccessMessage('');
+      setSuccessTicket('');
+    }, 3500);
+  };
+
+  const handleIncrementAvg = (amount: number) => {
+    setAvgConsultMinutes(prev => Math.min(60, Math.max(3, prev + amount)));
+  };
 
   return (
-    <div className="flex-1 flex flex-col px-4 pt-4 relative" id="receptionist-dashboard">
+    <div className="flex-1 flex flex-col px-4 pt-3 pb-24 relative" id="receptionist-premium-flow">
       
-      {/* Top Header/Staff profile tile */}
-      <div className={`p-4 rounded-2.5xl border flex items-center justify-between mb-4 ${
+      {/* 
+        -----------------------------------------
+        RECONCILED STAFF TOP BANNER
+        -----------------------------------------
+      */}
+      <div className={`p-3 rounded-2xl border flex items-center justify-between mb-4 ${
         darkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200/60 shadow-xs'
       }`}>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
             {receptionist.name.charAt(0)}
           </div>
           <div>
-            <h3 className="font-display font-bold text-sm text-slate-950 dark:text-white leading-tight">
+            <h3 className="font-display font-medium text-xs text-slate-800 dark:text-slate-200 leading-tight">
               {receptionist.name}
             </h3>
-            <p className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-0.5">
-              Assigned to: {receptionist.room}
+            <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wider">
+              {receptionist.room}
             </p>
           </div>
         </div>
         
         <button 
-          onClick={handleLogout}
-          className="text-xs font-semibold text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 px-3 py-1.5 rounded-lg hover:bg-rose-500/5 cursor-pointer border border-transparent hover:border-rose-500/10 transition-colors"
-          id="receptionist-signout"
+          onClick={() => {
+            logoutReceptionist();
+            navigate('/');
+          }}
+          className="text-[10px] uppercase font-extrabold text-rose-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 px-2.5 py-1.5 rounded-lg hover:bg-rose-500/5 transition-colors border border-transparent hover:border-rose-500/10"
+          id="receptionist-logout-btn"
         >
-          Logout Desk
+          Exit desk
         </button>
       </div>
 
-      {/* Success Notification Popup Banner */}
-      <AnimatePresence>
-        {successToast && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-4 p-3 rounded-xl bg-emerald-500 text-white text-xs font-semibold shadow-md flex items-center justify-between"
-            id="receptionist-toast-banner"
-          >
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-4 h-4" />
-              <span>{successToast}</span>
-            </div>
-            <button onClick={() => setSuccessToast('')} className="font-bold opacity-80 cursor-pointer">✕</button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* 
+        -----------------------------------------
+        CURRENT TOKEN CARD (Now Serving Display)
+        -----------------------------------------
+      */}
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={`p-4 rounded-3xl border mb-3.5 transition-all text-center relative overflow-hidden ${
+          callingPatients.length > 0 
+            ? 'border-blue-500/40 bg-gradient-to-br from-blue-500/10 via-indigo-500/5 to-blue-500/10'
+            : darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
+        }`}
+        id="current-token-wrapper"
+      >
+        <div className="absolute top-3.5 left-3.5 flex items-center gap-1">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">Active Call</span>
+        </div>
 
-      {/* Stats Cards Section */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        {[
-          { key: 'waiting', icon: Users, label: 'Waiting', count: waitingCount, color: 'text-blue-500 hover:bg-blue-500/5' },
-          { key: 'calling', icon: Volume2, label: 'Calling', count: callingCount, color: 'text-amber-500 hover:bg-amber-500/5' },
-          { key: 'history', icon: CheckCircle2, label: 'Ready', count: historyCount, color: 'text-emerald-500 hover:bg-emerald-500/5' }
-        ].map(item => (
-          <button
-            key={item.key}
-            onClick={() => setActiveTab(item.key as any)}
-            className={`p-2.5 rounded-2xl border transition-all text-left relative cursor-pointer ${
-              activeTab === item.key
-                ? darkMode
-                  ? 'bg-slate-905 border-slate-700 ring-1 ring-slate-800'
-                  : 'bg-white border-slate-350 shadow-sm'
-                : darkMode
-                  ? 'bg-slate-900/30 border-slate-900 text-slate-400'
-                  : 'bg-slate-50/70 border-slate-200/50 text-slate-500'
-            }`}
-          >
-            <div className="flex justify-between items-center">
-              <item.icon className={`w-4 h-4 ${activeTab === item.key ? item.color.split(' ')[0] : 'text-slate-400'}`} />
-              <span className={`text-[10px] uppercase tracking-wider font-bold opacity-80 z-10`}>{item.label}</span>
-            </div>
-            <div className="mt-2 text-xl font-bold font-display text-slate-950 dark:text-white leading-none">
-              {item.count}
-            </div>
-          </button>
-        ))}
-      </div>
+        <div className="text-[10px] font-bold tracking-widest text-slate-500 dark:text-slate-400 uppercase mt-2">
+          NOW SERVING
+        </div>
+        
+        <div className="my-2.5">
+          <span className="font-mono text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-500 dark:from-blue-400 dark:to-indigo-300 tracking-tighter">
+            {nowServingToken}
+          </span>
+        </div>
 
-      {/* Patient Queue Head */}
-      <div className="flex justify-between items-center mb-2.5">
-        <h4 className="text-xs font-bold text-slate-550 dark:text-slate-400 uppercase tracking-wider">
-          {activeTab === 'waiting' && 'Patient Priority Queue'}
-          {activeTab === 'calling' && 'Active Loudspeaker Callings'}
-          {activeTab === 'history' && 'Admitted / Closed History'}
+        <div className={`text-xs font-semibold ${darkMode ? 'text-slate-300' : 'text-slate-700'} flex items-center justify-center gap-1`}>
+          <UserCheck className="w-3.5 h-3.5 text-blue-500" />
+          <span>Patient: <strong className="font-extrabold text-blue-600 dark:text-blue-400">{nowServingName}</strong></span>
+        </div>
+      </motion.div>
+
+      {/* 
+        -----------------------------------------
+        ADD PATIENT CARD (Validation states built-in)
+        -----------------------------------------
+      */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className={`p-4 rounded-3xl border mb-3.5 transition-all ${
+          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
+        }`}
+        id="add-patient-wrapper"
+      >
+        <h4 className="text-xs font-extrabold text-slate-950 dark:text-white uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+          <UserPlus className="w-4 h-4 text-blue-500" />
+          <span>Intake Walk-in Registration</span>
         </h4>
 
-        {activeTab === 'waiting' && (
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowIntakeDrawer(true)}
-            className="flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-            id="open-intake-drawer-button"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Intake Walk-in</span>
-          </motion.button>
-        )}
-      </div>
-
-      {/* Main Container stream with loaders */}
-      <div className="flex-1 overflow-y-auto no-scrollbar space-y-2.5 pb-20">
-        {loadingList ? (
-          <div className="space-y-2.5">
-            <PatientCardSkeleton />
-            <PatientCardSkeleton />
-          </div>
-        ) : filteredPatients.length === 0 ? (
-          <EmptyState
-            title={
-              activeTab === 'waiting' 
-                ? 'Queue Clear' 
-                : activeTab === 'calling' 
-                  ? 'No Active Announcements' 
-                  : 'Logs Archive Empty'
-            }
-            description={
-              activeTab === 'waiting'
-                ? 'Excellent work triage room! There are no patients waiting in the clinic foyer.'
-                : activeTab === 'calling'
-                  ? 'Call a waiting ticket below to broadcast them automatically onto the Lobby Display.'
-                  : 'No patients have been checked in or marked as completed during this session.'
-            }
-            icon={activeTab === 'waiting' ? 'users' : 'clipboard'}
-            actionLabel={activeTab === 'waiting' ? 'New Walk-In Intake' : undefined}
-            onAction={activeTab === 'waiting' ? () => setShowIntakeDrawer(true) : undefined}
-          />
-        ) : (
-          <AnimatePresence initial={false}>
-            {filteredPatients.map((patient, index) => (
-              <motion.div
-                key={patient.id}
-                layout
-                initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, x: -50 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                className={`p-3 rounded-2.5xl border transition-all duration-200 flex items-center justify-between gap-3 ${
-                  patient.priority === 'urgent' && patient.status === 'waiting'
-                    ? darkMode
-                      ? 'bg-rose-950/20 border-rose-900/60'
-                      : 'bg-rose-500/5 border-rose-250/60 shadow-xs'
-                    : patient.status === 'calling'
-                      ? 'animate-ring-pulse border-blue-600 dark:border-blue-500'
-                      : darkMode
-                        ? 'bg-slate-900/50 border-slate-850'
-                        : 'bg-white border-slate-200/50 shadow-sm'
-                }`}
-                id={`patient-card-${patient.ticketNumber}`}
+        <form onSubmit={handleAddPatientSubmit} className="space-y-3">
+          {/* Validation Feedbacks */}
+          <AnimatePresence>
+            {formError && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[11px] font-semibold flex items-center gap-1.5"
+                id="add-patient-error"
               >
-                <div className="flex items-center gap-3">
-                  {/* Digital circular badge indicator */}
-                  <div className={`w-11 h-11 rounded-xl font-mono text-center flex flex-col items-center justify-center leading-none flex-shrink-0 ${
-                    patient.priority === 'urgent' && patient.status === 'waiting'
-                      ? 'bg-qc-danger text-white'
-                      : patient.status === 'calling'
-                        ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
-                        : darkMode ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-800'
-                  }`}>
-                    <span className="text-[9px] font-bold tracking-tight opacity-75">TICKET</span>
-                    <span className="text-[13px] font-extrabold mt-0.5">{patient.ticketNumber.split('-')[1]}</span>
-                  </div>
-
-                  {/* Patient Name / Reason */}
-                  <div>
-                    <h5 className="font-display font-extrabold text-[14px] text-slate-950 dark:text-white leading-tight flex items-center gap-1.5">
-                      {patient.name}
-                      {patient.priority === 'urgent' && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[8px] font-extrabold bg-red-500 text-white uppercase animate-pulse-slow">
-                          URGENT
-                        </span>
-                      )}
-                    </h5>
-                    <p className={`text-[12px] mt-0.5 leading-tight ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                      {patient.purpose}
-                    </p>
-                    <span className="text-[10px] font-mono opacity-60">
-                      In {Math.round((Date.now() - new Date(patient.joinedAt).getTime()) / 60000)}m ago
-                    </span>
-                  </div>
-                </div>
-
-                {/* Operations contextual actions depending on Current Active Tab */}
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {patient.status === 'waiting' && (
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => handleCallPatient(patient.id)}
-                      className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/10 flex items-center gap-1 cursor-pointer"
-                      id={`action-call-${patient.id}`}
-                    >
-                      <Volume2 className="w-3.5 h-3.5" />
-                      <span>Call</span>
-                    </motion.button>
-                  )}
-
-                  {patient.status === 'calling' && (
-                    <>
-                      {/* Complete Check-in button */}
-                      <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => completePatient(patient.id)}
-                        className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white transition-colors cursor-pointer"
-                        title="Mark Completed"
-                        id={`action-complete-${patient.id}`}
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                      </motion.button>
-
-                      {/* No Show button */}
-                      <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => noShowPatient(patient.id)}
-                        className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white transition-colors cursor-pointer"
-                        title="Mark No Show"
-                        id={`action-noshow-${patient.id}`}
-                      >
-                        <UserX className="w-4 h-4" />
-                      </motion.button>
-                    </>
-                  )}
-
-                  {activeTab === 'history' && (
-                    <div className="text-right flex flex-col items-end gap-1">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                        patient.status === 'completed'
-                          ? 'bg-emerald-500/10 text-emerald-600'
-                          : 'bg-slate-500/10 text-slate-500'
-                      }`}>
-                        {patient.status}
-                      </span>
-                      {patient.assignedRoom && (
-                        <div className="text-[10px] text-slate-400 font-medium">By {patient.assignedRoom}</div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Ultimate emergency option: Delete card completely */}
-                  {patient.status === 'waiting' && (
-                    <button
-                      onClick={() => {
-                        if (confirm(`Remove ${patient.name} from admissions entirely?`)) removePatient(patient.id);
-                      }}
-                      className="p-2 rounded-xl text-slate-300 hover:text-rose-500 dark:hover:text-rose-400 cursor-pointer"
-                      id={`action-delete-${patient.id}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{formError}</span>
               </motion.div>
-            ))}
+            )}
+
+            {successMessage && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 text-[11px] font-semibold flex items-center gap-1.5 justify-between"
+                id="add-patient-success"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>{successMessage}</span>
+                </div>
+                {successTicket && (
+                  <span className="font-mono bg-emerald-500 text-white px-1.5 py-0.5 rounded text-[10px] font-black">
+                    {successTicket}
+                  </span>
+                )}
+              </motion.div>
+            )}
           </AnimatePresence>
-        )}
-      </div>
 
-      {/* Floating Walk-in Intake drawer simulation */}
-      <AnimatePresence>
-        {showIntakeDrawer && (
-          <>
-            {/* Soft Backdrop overlay wrapper */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowIntakeDrawer(false)}
-              className="absolute inset-0 bg-slate-950 z-40 rounded-b-[40px] pointer-events-auto"
-            />
-
-            {/* Simulated Sheet drawer */}
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-              className={`absolute bottom-0 left-0 right-0 p-5 rounded-t-[28px] border-t z-50 pointer-events-auto shadow-2xl ${
-                darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Enter Patient Full Name..."
+              value={newPatientName}
+              onChange={(e) => {
+                setNewPatientName(e.target.value);
+                if (e.target.value.trim()) setFormError('');
+              }}
+              className={`flex-1 px-3.5 py-2.5 text-xs rounded-xl border focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 transition-all ${
+                darkMode 
+                  ? 'bg-slate-800 border-slate-700 text-white focus:border-blue-500' 
+                  : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-blue-500'
               }`}
-              id="walk-in-intake-drawer"
+              id="receptionist-form-name-input"
+            />
+            
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              type="submit"
+              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs shadow-md shadow-blue-500/10 flex items-center gap-1 cursor-pointer"
+              id="receptionist-form-add-btn"
             >
-              <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-4" />
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add</span>
+            </motion.button>
+          </div>
+
+          {/* Quick options */}
+          <div className="flex items-center justify-between pt-1">
+            <select
+              value={visitPurpose}
+              onChange={(e) => setVisitPurpose(e.target.value)}
+              className={`px-2 py-1.5 rounded-lg text-[10px] border focus:outline-hidden ${
+                darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
+              }`}
+            >
+              <option value="General Consultation">Wellness Checkup</option>
+              <option value="Acute Chest Congestion">Acute Pain Triage</option>
+              <option value="Vaccine Intake / Jab">Vaccine / Jab</option>
+              <option value="Knee Joint Physiotherapy">Physio consult</option>
+            </select>
+
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isUrgent}
+                onChange={(e) => setIsUrgent(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+              />
+              <span className="text-[10px] font-extrabold text-rose-600 dark:text-rose-400">MARK URGENT Triage</span>
+            </label>
+          </div>
+        </form>
+      </motion.div>
+
+      {/* 
+        -----------------------------------------
+        AVERAGE CONSULTATION TIME CARD
+        -----------------------------------------
+      */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        className={`p-4 rounded-3xl border mb-3.5 transition-all ${
+          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
+        }`}
+        id="average-time-card"
+      >
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-xl bg-orange-500/10 text-orange-500">
+              <Clock className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Consultation Target</div>
+              <div className="text-[14px] font-extrabold text-slate-950 dark:text-white mt-0.5">
+                {avgConsultMinutes} Minutes Average
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowAvgEditOptions(!showAvgEditOptions)}
+            className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+            id="average-time-toggle-edit"
+          >
+            {showAvgEditOptions ? 'Done' : 'Edit'}
+          </button>
+        </div>
+
+        {/* Accordion dial options */}
+        <AnimatePresence>
+          {showAvgEditOptions && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-3 pt-3 border-t border-dashed border-slate-250 dark:border-slate-800 flex items-center justify-between gap-3"
+            >
+              <p className="text-[10px] text-slate-505 dark:text-slate-400 max-w-[180px] leading-relaxed">
+                Adjust consultation speeds according to staff availability.
+              </p>
               
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-display font-extrabold text-[18px] text-slate-950 dark:text-white">
-                  Intake Walk-In Admission
-                </h3>
-                <button 
-                  onClick={() => setShowIntakeDrawer(false)}
-                  className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleIncrementAvg(-1)}
+                  className={`w-7 h-7 rounded-lg font-bold text-sm flex items-center justify-center border hover:bg-slate-100 ${
+                    darkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200/80 text-slate-700'
+                  }`}
                 >
-                  ✕
+                  -
+                </button>
+                <span className="font-mono font-bold text-xs w-6 text-center">{avgConsultMinutes}m</span>
+                <button
+                  type="button"
+                  onClick={() => handleIncrementAvg(1)}
+                  className={`w-7 h-7 rounded-lg font-bold text-sm flex items-center justify-center border hover:bg-slate-100 ${
+                    darkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200/80 text-slate-700'
+                  }`}
+                >
+                  +
                 </button>
               </div>
-
-              <form onSubmit={handleCreateIntake} className="space-y-4">
-                {/* Full name input */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Patient Full Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={patientName}
-                    onChange={(e) => setPatientName(e.target.value)}
-                    placeholder="e.g. Johnathan Smith"
-                    className={`w-full px-4 py-2.5 rounded-xl text-sm border focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 transition-all ${
-                      darkMode 
-                        ? 'bg-slate-800 border-slate-700 text-white' 
-                        : 'bg-slate-50 border-slate-200 text-slate-800 shadow-xs'
-                    }`}
-                  />
-                </div>
-
-                {/* Reason select list */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Reason for Visit</label>
-                  <select
-                    value={purpose}
-                    onChange={(e) => setPurpose(e.target.value)}
-                    className={`w-full px-4 py-2.5 rounded-xl text-sm border focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 transition-all ${
-                      darkMode 
-                        ? 'bg-slate-800 border-slate-700 text-white' 
-                        : 'bg-slate-50 border-slate-200 text-slate-800 shadow-xs'
-                    }`}
-                  >
-                    <option value="General Consultation">General Consultation</option>
-                    <option value="Acute Chest Congestion">Acute Chest Congestion</option>
-                    <option value="Vaccine Intake / Jab">Vaccine Intake / Jab</option>
-                    <option value="Knee Joint Physiotherapy">Knee Joint Physiotherapy</option>
-                    <option value="Severe Migraine Check">Severe Migraine Check</option>
-                    <option value="Annual Lab Diagnostics">Annual Lab Diagnostics</option>
-                  </select>
-                </div>
-
-                {/* Priority Radios */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Triage Level</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { key: 'normal', label: 'Normal / Non-urgent', flag: 'badge bg-slate-100 text-slate-700' },
-                      { key: 'urgent', label: 'Urgent Clinic Case', flag: 'badge bg-rose-500 text-white' }
-                    ].map(t => (
-                      <button
-                        key={t.key}
-                        type="button"
-                        onClick={() => setPriority(t.key as PriorityLevel)}
-                        className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
-                          priority === t.key
-                            ? t.key === 'urgent'
-                              ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold'
-                              : 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400 font-semibold'
-                            : darkMode
-                              ? 'border-slate-800 bg-slate-800/40 text-slate-400'
-                              : 'border-slate-200 bg-slate-50/50 text-slate-500'
-                        }`}
-                      >
-                        <span className="text-xs">{t.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <motion.button
-                    whileTap={{ scale: 0.98 }}
-                    type="submit"
-                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-lg shadow-blue-500/10 cursor-pointer"
-                  >
-                    Register Walk-In Patient
-                  </motion.button>
-                </div>
-              </form>
             </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* 
+        -----------------------------------------
+        QUEUE STATISTICS CARD
+        -----------------------------------------
+      */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="grid grid-cols-2 gap-3 mb-4"
+        id="queue-statistics-holder"
+      >
+        {/* Waiting box */}
+        <div className={`p-3 rounded-2.5xl border flex flex-col justify-between ${
+          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-xs'
+        }`}>
+          <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+            <Users className="w-3.5 h-3.5 text-blue-500" />
+            <span>WAITING STACK</span>
+          </div>
+          <div className="text-2xl font-black font-display text-slate-900 dark:text-white mt-1.5">
+            {waitingCount}
+          </div>
+        </div>
+
+        {/* Completed box */}
+        <div className={`p-3 rounded-2.5xl border flex flex-col justify-between ${
+          darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-xs'
+        }`}>
+          <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+            <span>COMPLETED TODAY</span>
+          </div>
+          <div className="text-2xl font-black font-display text-slate-900 dark:text-white mt-1.5">
+            {completedCount || 18}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* 
+        -----------------------------------------
+        CURRENT QUEUE CARD (STANDBY LIST)
+        -----------------------------------------
+      */}
+      <div className="space-y-2 mb-4">
+        <div className="flex justify-between items-center px-1">
+          <h4 className="text-xs font-bold text-slate-450 dark:text-slate-400 uppercase tracking-widest">
+            Live Standby Queue
+          </h4>
+          <span className="text-[10px] font-mono text-slate-400">{patients.length} total</span>
+        </div>
+
+        <div className={`p-3 rounded-3.5xl border min-h-[160px] pb-6 ${
+          darkMode ? 'bg-slate-905 border-slate-800/80' : 'bg-white border-slate-205/60 shadow-xs'
+        }`} id="queue-list-card">
+          {patients.length === 0 ? (
+            <div className="py-8 text-center text-slate-400">
+              <Sparkles className="w-7 h-7 mx-auto mb-1 text-slate-300 animate-pulse" />
+              <p className="text-xs">All Standby queues are completely vacant.</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              <AnimatePresence initial={false}>
+                {patients.map((pt, idx) => (
+                  <motion.div
+                    key={pt.id}
+                    layoutId={`receptionist-pt-${pt.id}`}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ 
+                      opacity: 1, 
+                      scale: 1,
+                      backgroundColor: highlightedId === pt.id 
+                        ? (darkMode ? 'rgba(37, 99, 235, 0.15)' : 'rgba(219, 234, 254, 0.5)')
+                        : 'transparent'
+                    }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    className={`p-2.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                      pt.priority === 'urgent' && pt.status === 'waiting'
+                        ? darkMode ? 'bg-rose-950/20 border-rose-950' : 'bg-red-500/5 border-red-100'
+                        : pt.status === 'calling'
+                          ? 'border-indigo-500 bg-indigo-500/5'
+                          : darkMode ? 'border-slate-800' : 'border-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {/* Ticket Badge */}
+                      <span className="font-mono text-xs font-extrabold px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100">
+                        {pt.ticketNumber}
+                      </span>
+                      
+                      {/* Name / Reason */}
+                      <div>
+                        <div className="text-xs font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1">
+                          {pt.name}
+                          {pt.priority === 'urgent' && pt.status === 'waiting' && (
+                            <span className="text-[7.5px] uppercase font-black bg-rose-500 text-white px-1 rounded">Urgent</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500">{pt.purpose}</p>
+                      </div>
+                    </div>
+
+                    {/* Left align button actions or status */}
+                    <div className="flex items-center gap-1.5">
+                      {pt.status === 'waiting' && (
+                        <motion.button
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => callPatient(pt.id, receptionist.room)}
+                          className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-extrabold flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Volume2 className="w-3 h-3" />
+                          <span>Call</span>
+                        </motion.button>
+                      )}
+
+                      {pt.status === 'calling' && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => completePatient(pt.id)}
+                            className="p-1.5 rounded bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-colors"
+                            title="Complete"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => noShowPatient(pt.id)}
+                            className="p-1.5 rounded bg-rose-500/15 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors"
+                            title="No Show"
+                          >
+                            <UserX className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Status badges */}
+                      {(pt.status === 'completed' || pt.status === 'no-show') && (
+                        <div className={`px-2 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider ${
+                          pt.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {pt.status}
+                        </div>
+                      )}
+
+                      {/* Quick delete card */}
+                      <button
+                        onClick={() => removePatient(pt.id)}
+                        className="p-1.5 text-slate-300 hover:text-rose-500"
+                        title="Remove"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 
+        -----------------------------------------
+        FLOATING CALL NEXT PATIENT BUTTON
+        -----------------------------------------
+      */}
+      <div className="absolute bottom-6 right-5 z-40">
+        <motion.button
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.92 }}
+          animate={{
+            boxShadow: [
+              "0 4px 14px 0 rgba(37, 99, 235, 0.4)",
+              "0 4px 20px 8px rgba(37, 99, 235, 0.15)",
+              "0 4px 14px 0 rgba(37, 99, 235, 0.4)"
+            ]
+          }}
+          transition={{
+            repeat: Infinity,
+            duration: 2.2,
+            ease: "easeInOut"
+          }}
+          onClick={handleCallNextTicket}
+          disabled={waitingCount === 0}
+          className={`flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-xl cursor-pointer select-none border border-blue-400/20 ${
+            waitingCount === 0 ? 'opacity-40 saturate-50 cursor-not-allowed' : ''
+          }`}
+          title="Call Next Patient in Standby Queue"
+          id="floating-call-next-ticket"
+        >
+          <Volume2 className="w-6 h-6 animate-pulse-slow text-white" />
+          
+          {waitingCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-extrabold text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-800 animate-bounce">
+              {waitingCount}
+            </span>
+          )}
+        </motion.button>
+      </div>
+
     </div>
   );
 };
