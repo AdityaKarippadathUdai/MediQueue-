@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Document, Types, Model, CallbackWithoutResultAndOptionalError } from 'mongoose';
 
 // ─────────────────────────────────────────────
 // TypeScript Interfaces
@@ -158,8 +158,8 @@ PatientSchema.virtual('consultationDurationMinutes').get(function (this: IPatien
 // Pre-save Middleware
 // ─────────────────────────────────────────────
 
-// Ensure calledAt is set when transitioning to active
-PatientSchema.pre('save', function (this: IPatient, next) {
+// Ensure calledAt/completedAt are set when transitioning status
+PatientSchema.pre<IPatient>('save', function (next) {
   if (this.isModified('status')) {
     if (this.status === 'active' && !this.calledAt) {
       this.calledAt = new Date();
