@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types, Model, CallbackWithoutResultAndOptionalError } from 'mongoose';
+import { Schema, model, Document, Types } from 'mongoose';
 
 // ─────────────────────────────────────────────
 // TypeScript Interfaces
@@ -154,22 +154,9 @@ PatientSchema.virtual('consultationDurationMinutes').get(function (this: IPatien
   return Math.round((this.completedAt.getTime() - this.calledAt.getTime()) / 60000);
 });
 
-// ─────────────────────────────────────────────
-// Pre-save Middleware
-// ─────────────────────────────────────────────
-
-// Ensure calledAt/completedAt are set when transitioning status
-PatientSchema.pre<IPatient>('save', function (next) {
-  if (this.isModified('status')) {
-    if (this.status === 'active' && !this.calledAt) {
-      this.calledAt = new Date();
-    }
-    if (this.status === 'completed' && !this.completedAt) {
-      this.completedAt = new Date();
-    }
-  }
-  next();
-});
+// Note: calledAt and completedAt timestamps are set explicitly in the
+// PatientRepository.updateStatus() method via $set to ensure atomicity.
+// A pre-save hook is intentionally omitted to avoid double-assignment.
 
 // ─────────────────────────────────────────────
 // Model Export
