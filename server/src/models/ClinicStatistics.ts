@@ -1,4 +1,4 @@
-import { Schema, model, Document } from 'mongoose';
+import { Schema, model, Document, Model } from 'mongoose';
 
 // ─────────────────────────────────────────────
 // TypeScript Interface
@@ -145,7 +145,7 @@ ClinicStatisticsSchema.statics.recordCompletion = async function (
 // Model Export
 // ─────────────────────────────────────────────
 
-export interface ClinicStatisticsModel extends ReturnType<typeof model<IClinicStatistics>> {
+export interface ClinicStatisticsModel extends Model<IClinicStatistics> {
   getOrInitializeForToday(departmentCode?: string, today?: string): Promise<IClinicStatistics>;
   recordCompletion(
     departmentCode: string,
