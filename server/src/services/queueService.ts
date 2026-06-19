@@ -1,138 +1,126 @@
-import prisma from '../prisma/client';
+import { patientRepository } from '../repositories/patientRepository';
+import { queueSettingsRepository } from '../repositories/queueSettingsRepository';
+import { clinicStatisticsRepository } from '../repositories/clinicStatisticsRepository';
 import { emitToAll } from '../sockets/io';
-import { transformPatient } from './patientService';
 import { CustomError } from '../middleware/error';
-import { TokenStatus } from '@prisma/client';
+import { toPatientResponse } from './patientService';
+import { QueueStatusResponse, StatisticsResponse, PatientResponse } from '../types';
+
+const TODAY = (): string => new Date().toISOString().split('T')[0];
+const DEPT = 'GEN';
 
 export class QueueService {
-  async getDefaultDepartment() {
-    let dept = await prisma.department.findUnique({
-      where: { code: 'GEN' },
-    });
-    if (!dept) {
-      dept = await prisma.department.create({
-        data: { name: 'General Medicine', code: 'GEN' },
-      });
-    }
-    return dept;
+  /**
+   * GET /api/queue/status
+   * Returns current token, waiting/active/completed counts, and average consultation time.
+   */
+  async getQueueStatus(): Promise<QueueStatusResponse> {
+    const today = TODAY();
+
+    const [settings, counts] = await Promise.all([
+      queueSettingsRepository.getOrInitialize(DEPT, today),
+      patientRepository.countByStatus(today),
+    ]);
+
+    return {
+      currentToken: settings.currentToken > 0 ? settings.currentToken : '',
+      waitingCount: counts.waiting,
+      activeCount: counts.active,
+      completedCount: counts.completed,
+      noShowCount: counts['no-show'],
+      averageConsultationTime: settings.averageConsultationTime,
+      isQueueOpen: settings.isQueueOpen,
+      date: today,
+    };
   }
 
-  async getOrResetSettings(departmentId: string, today: string) {
-    let settings = await prisma.queueSettings.findUnique({
-      where: { departmentId },
-    });
+  /**
+   * POST /api/queue/next
+   * Call the next patient in queue (urgent-first, then FIFO by token).
+   * Atomically transitions the patient to 'active', updates currentToken,
+   * and broadcasts to all connected clients.
+   */
+  async callNextPatient(room?: string): Promise<PatientResponse> {
+    const today = TODAY();
+    const settings = await queueSettingsRepository.getOrInitialize(DEPT, today);
 
-    if (!settings) {
-      settings = await prisma.queueSettings.create({
-        data: {
-          currentToken: 0,
-          lastIssuedToken: 0,
-          resetDate: today,
-          departmentId,
-        },
-      });
-    } else if (settings.resetDate !== today) {
-      settings = await prisma.queueSettings.update({
-        where: { departmentId },
-        data: {
-          currentToken: 0,
-          lastIssuedToken: 0,
-          resetDate: today,
-        },
-      });
+    if (!settings.isQueueOpen) {
+      const err: CustomError = new Error('Queue is currently closed.');
+      err.statusCode = 403;
+      throw err;
     }
 
-    return settings;
-  }
-
-  async callNextPatient(room: string) {
-    const today = new Date().toISOString().split('T')[0];
-    const dept = await this.getDefaultDepartment();
-
-    // Ensure settings are synced/reset
-    await this.getOrResetSettings(dept.id, today);
-
-    // Fetch the next waiting token (sorted by tokenNumber ASC)
-    const nextToken = await prisma.queueToken.findFirst({
-      where: {
-        status: TokenStatus.WAITING,
-        date: today,
-        departmentId: dept.id,
-      },
-      orderBy: { tokenNumber: 'asc' },
-    });
-
-    if (!nextToken) {
+    const nextPatient = await patientRepository.findNextWaiting(today);
+    if (!nextPatient) {
       const err: CustomError = new Error('No patients waiting in queue');
       err.statusCode = 404;
       throw err;
     }
 
-    // Update token status to CALLED
-    const updatedToken = await prisma.queueToken.update({
-      where: { id: nextToken.id },
-      data: { status: TokenStatus.CALLED },
+    const patientId = String((nextPatient as any)._id ?? (nextPatient as any).id ?? '');
+
+    const updated = await patientRepository.updateStatus(patientId, {
+      status: 'active',
+      assignedRoom: room ?? settings.currentRoom,
     });
 
-    const transformed = transformPatient(updatedToken);
+    if (!updated) {
+      const err: CustomError = new Error('Failed to call next patient');
+      err.statusCode = 500;
+      throw err;
+    }
 
-    // Update settings currentToken
-    await prisma.queueSettings.update({
-      where: { departmentId: dept.id },
-      data: { currentToken: transformed.token },
+    // Update currentToken in settings
+    await queueSettingsRepository.setCurrentToken(DEPT, updated.token);
+
+    const response = toPatientResponse(updated);
+
+    // Broadcast to displays and patient devices
+    emitToAll('currentTokenUpdated', {
+      token: updated.token,
+      displayToken: `QC-${updated.token}`,
     });
+    const allPatients = (await patientRepository.findAllForDate(today)).map(toPatientResponse);
+    emitToAll('queueUpdated', { patients: allPatients });
 
-    // Broadcast socket updates
-    emitToAll('currentTokenUpdated', { token: transformed.token });
-
-    // Retrieve today's updated tokens in order
-    const tokens = await prisma.queueToken.findMany({
-      where: {
-        date: today,
-        departmentId: dept.id,
-      },
-      orderBy: { tokenNumber: 'asc' },
-    });
-    emitToAll('queueUpdated', tokens.map(transformPatient));
-
-    return transformed;
+    return response;
   }
 
-  async getQueueStatus() {
-    const today = new Date().toISOString().split('T')[0];
-    const dept = await this.getDefaultDepartment();
-
-    const settings = await this.getOrResetSettings(dept.id, today);
-
-    const waitingCount = await prisma.queueToken.count({
-      where: {
-        status: TokenStatus.WAITING,
-        date: today,
-        departmentId: dept.id,
-      },
-    });
-
-    const completedCount = await prisma.queueToken.count({
-      where: {
-        status: TokenStatus.COMPLETED,
-        date: today,
-        departmentId: dept.id,
-      },
-    });
-
-    return {
-      currentToken: settings.currentToken > 0 ? settings.currentToken : '',
-      waitingCount,
-      completedCount,
-      averageConsultationTime: 15, // Return default 15m as it is no longer stored in QueueSettings
-    };
-  }
-
-  async updateAverageTime(minutes: number) {
-    // Since settings table does not store average consultation time anymore, we mock it for frontend compatibility
+  /**
+   * PUT /api/queue/average-time
+   * Update the target average consultation time (affects EWT calculations).
+   */
+  async updateAverageTime(minutes: number): Promise<{ averageConsultationTime: number }> {
+    await queueSettingsRepository.updateAverageConsultationTime(DEPT, minutes);
     emitToAll('averageTimeUpdated', { averageConsultationTime: minutes });
+    return { averageConsultationTime: minutes };
+  }
+
+  /**
+   * PUT /api/queue/open
+   * Open or close the queue. When closed, patient registration is blocked.
+   */
+  async setQueueOpen(isOpen: boolean): Promise<{ isQueueOpen: boolean }> {
+    await queueSettingsRepository.setQueueOpen(DEPT, isOpen);
+    emitToAll('queueStatusChanged', { isQueueOpen: isOpen });
+    return { isQueueOpen: isOpen };
+  }
+
+  /**
+   * GET /api/queue/statistics
+   * Return today's clinic performance statistics.
+   */
+  async getStatistics(): Promise<StatisticsResponse> {
+    const today = TODAY();
+    const stats = await clinicStatisticsRepository.getOrInitializeForToday(DEPT, today);
+
     return {
-      averageConsultationTime: minutes,
+      totalPatientsToday: stats.totalPatientsToday,
+      completedPatientsToday: stats.completedPatientsToday,
+      noShowPatientsToday: stats.noShowPatientsToday,
+      averageActualConsultationTime: stats.averageActualConsultationTime,
+      peakQueueLength: stats.peakQueueLength,
+      date: today,
     };
   }
 }
