@@ -1,12 +1,22 @@
 import { Router } from 'express';
 import queueController from '../controllers/queueController';
+import pinAuthMiddleware from '../middleware/pinAuth';
 import { validate } from '../middleware/validate';
-import { callNextPatientSchema, updateAverageTimeSchema } from '../utils/validation';
+import {
+  callNextPatientSchema,
+  updateAverageTimeSchema,
+  setQueueOpenSchema,
+} from '../utils/validation';
 
 const router = Router();
 
-router.post('/next', validate(callNextPatientSchema), queueController.callNextPatient);
-router.get('/status', queueController.getQueueStatus);
-router.put('/average-time', validate(updateAverageTimeSchema), queueController.updateAverageTime);
+// Public — any connected client can see status
+router.get('/status', queueController.getQueueStatus.bind(queueController));
+router.get('/statistics', queueController.getStatistics.bind(queueController));
+
+// Receptionist-only — requires PIN header
+router.post('/next', pinAuthMiddleware, validate(callNextPatientSchema), queueController.callNextPatient.bind(queueController));
+router.put('/average-time', pinAuthMiddleware, validate(updateAverageTimeSchema), queueController.updateAverageTime.bind(queueController));
+router.put('/open', pinAuthMiddleware, validate(setQueueOpenSchema), queueController.setQueueOpen.bind(queueController));
 
 export default router;
