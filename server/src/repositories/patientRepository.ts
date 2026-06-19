@@ -1,5 +1,5 @@
 import { Patient, IPatient, PatientStatus } from '../models/Patient';
-import { FilterQuery, Types } from 'mongoose';
+import { Types } from 'mongoose';
 
 // ─────────────────────────────────────────────
 // Input Interfaces
