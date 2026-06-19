@@ -1,23 +1,20 @@
 {
-  "name": "mediqueue-backend",
-  "version": "1.0.0",
-  "description": "Production-ready backend for MediQueue hospital queue management system",
+  "name": "queue-cure-backend",
+  "version": "2.0.0",
+  "description": "Queue Cure — Real-time clinic queue management backend. Node.js, Express, MongoDB, Mongoose, Socket.IO.",
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "seed": "ts-node prisma/seed.ts"
+    "type-check": "tsc --noEmit --skipLibCheck"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "helmet": "^7.1.0",
-    "mongoose": "^9.7.1",
+    "mongoose": "^8.0.0",
     "morgan": "^1.10.0",
     "socket.io": "^4.7.5",
     "zod": "^3.22.4"
