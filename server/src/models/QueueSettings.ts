@@ -1,4 +1,4 @@
-import { Schema, model, Document } from 'mongoose';
+import { Schema, model, Document, Model } from 'mongoose';
 
 // ─────────────────────────────────────────────
 // TypeScript Interface
@@ -117,7 +117,7 @@ QueueSettingsSchema.statics.getOrInitialize = async function (
 // Model Export
 // ─────────────────────────────────────────────
 
-export interface QueueSettingsModel extends ReturnType<typeof model<IQueueSettings>> {
+export interface QueueSettingsModel extends Model<IQueueSettings> {
   getOrInitialize(departmentCode?: string, today?: string): Promise<IQueueSettings>;
 }
 
