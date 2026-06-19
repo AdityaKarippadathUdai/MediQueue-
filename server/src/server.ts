@@ -1,44 +1,58 @@
 import http from 'http';
+import mongoose from 'mongoose';
 import app from './app';
 import config from './config';
 import { initSocket } from './sockets/io';
-import prisma from './prisma/client';
 
 const server = http.createServer(app);
 
-// Initialize Socket.io on top of the HTTP server
+// Initialize Socket.IO on top of the HTTP server
 initSocket(server);
 
-// Start server
-const port = config.port;
-server.listen(port, () => {
-  console.log(`===============================================`);
-  console.log(`  MediQueue Backend Server is running!`);
-  console.log(`  Port: ${port}`);
-  console.log(`  Environment: ${config.nodeEnv}`);
-  console.log(`  API Base: http://localhost:${port}/api`);
-  console.log(`===============================================`);
-});
+// Connect to MongoDB, then start the server
+const start = async () => {
+  try {
+    await mongoose.connect(config.mongodbUri);
+    console.log('MongoDB connected successfully.');
 
-// Handle graceful shutdown signals
+    server.listen(config.port, () => {
+      console.log(`===============================================`);
+      console.log(`  Queue Cure Backend Server is running!`);
+      console.log(`  Port    : ${config.port}`);
+      console.log(`  Env     : ${config.nodeEnv}`);
+      console.log(`  DB      : MongoDB`);
+      console.log(`  API     : http://localhost:${config.port}/api`);
+      console.log(`===============================================`);
+    });
+  } catch (err) {
+    console.error('Failed to connect to MongoDB:', err);
+    process.exit(1);
+  }
+};
+
+start();
+
+// ─────────────────────────────────────────────
+// Graceful Shutdown
+// ─────────────────────────────────────────────
+
 const shutdown = async () => {
-  console.log('Shutdown signal received. Starting graceful shutdown process...');
-  
+  console.log('\nShutdown signal received. Starting graceful shutdown...');
   server.close(async () => {
-    console.log('Express server closed to new connections.');
+    console.log('HTTP server closed.');
     try {
-      await prisma.$disconnect();
-      console.log('Database connection pool terminated successfully.');
+      await mongoose.disconnect();
+      console.log('MongoDB connection closed.');
       process.exit(0);
     } catch (err) {
-      console.error('Failed to disconnect database clean:', err);
+      console.error('Error closing MongoDB connection:', err);
       process.exit(1);
     }
   });
 
-  // Force exit after 10 seconds
+  // Force exit after 10 seconds if graceful shutdown hangs
   setTimeout(() => {
-    console.error('Shutdown timed out. Forcefully closing processes...');
+    console.error('Shutdown timed out. Forcing exit.');
     process.exit(1);
   }, 10000);
 };
