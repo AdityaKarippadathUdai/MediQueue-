@@ -1,211 +1,205 @@
-import prisma from '../prisma/client';
+import { patientRepository } from '../repositories/patientRepository';
+import { queueSettingsRepository } from '../repositories/queueSettingsRepository';
+import { clinicStatisticsRepository } from '../repositories/clinicStatisticsRepository';
 import { emitToAll } from '../sockets/io';
 import { CustomError } from '../middleware/error';
-import { QueueToken, TokenStatus } from '@prisma/client';
+import { IPatient } from '../models/Patient';
+import { PatientResponse, PatientStatus } from '../types';
 
-export const transformPatient = (pt: QueueToken) => {
-  // Map database enum to client status strings
-  let clientStatus: 'waiting' | 'calling' | 'completed' | 'no-show' = 'waiting';
-  if (pt.status === TokenStatus.CALLED) {
-    clientStatus = 'calling';
-  } else if (pt.status === TokenStatus.COMPLETED) {
-    clientStatus = 'completed';
-  } else if (pt.status === TokenStatus.CANCELLED) {
-    clientStatus = 'no-show';
-  }
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
 
+const TODAY = (): string => new Date().toISOString().split('T')[0];
+const DEPT = 'GEN';
+
+/**
+ * Map a Mongoose IPatient document to the API response shape.
+ * Maintains the _id/id dual-field contract that the frontend expects.
+ */
+export const toPatientResponse = (p: IPatient): PatientResponse => {
+  const id = String((p as any)._id ?? (p as any).id ?? '');
   return {
-    id: pt.id,
-    _id: pt.id, // Support client expectations
-    name: pt.patientName,
-    token: pt.tokenNumber,
-    status: clientStatus,
-    purpose: `Phone: ${pt.patientPhone}`, // Map phone to purpose for visual UI rendering
-    priority: 'normal' as 'normal' | 'urgent',
-    joinedAt: pt.createdAt.toISOString(),
-    calledAt: pt.status === TokenStatus.CALLED || pt.status === TokenStatus.COMPLETED ? pt.updatedAt.toISOString() : undefined,
-    assignedRoom: 'Examination Room 1',
+    _id: id,
+    id,
+    name: p.name,
+    token: p.token,
+    status: p.status,
+    purpose: p.purpose ?? 'General Consultation',
+    priority: p.priority,
+    joinedAt: p.joinedAt instanceof Date ? p.joinedAt.toISOString() : String(p.joinedAt),
+    calledAt: p.calledAt ? (p.calledAt instanceof Date ? p.calledAt.toISOString() : String(p.calledAt)) : undefined,
+    completedAt: p.completedAt ? (p.completedAt instanceof Date ? p.completedAt.toISOString() : String(p.completedAt)) : undefined,
+    estimatedWaitTime: p.estimatedWaitTime ?? undefined,
+    assignedRoom: p.assignedRoom ?? undefined,
   };
 };
 
+// ─────────────────────────────────────────────
+// PatientService
+// ─────────────────────────────────────────────
+
 export class PatientService {
-  // Helper to get default department
-  async getDefaultDepartment() {
-    let dept = await prisma.department.findUnique({
-      where: { code: 'GEN' },
-    });
-    if (!dept) {
-      dept = await prisma.department.create({
-        data: { name: 'General Medicine', code: 'GEN' },
-      });
-    }
-    return dept;
+  /**
+   * Get all patients for today, ordered by token number.
+   */
+  async getPatients(): Promise<PatientResponse[]> {
+    const patients = await patientRepository.findAllForDate(TODAY());
+    return patients.map(toPatientResponse);
   }
 
-  // Helper to get or reset QueueSettings for a department
-  async getOrResetSettings(departmentId: string, today: string) {
-    let settings = await prisma.queueSettings.findUnique({
-      where: { departmentId },
-    });
-
-    if (!settings) {
-      settings = await prisma.queueSettings.create({
-        data: {
-          currentToken: 0,
-          lastIssuedToken: 0,
-          resetDate: today,
-          departmentId,
-        },
-      });
-    } else if (settings.resetDate !== today) {
-      // Daily reset: Date has changed, start tokens back at 0
-      settings = await prisma.queueSettings.update({
-        where: { departmentId },
-        data: {
-          currentToken: 0,
-          lastIssuedToken: 0,
-          resetDate: today,
-        },
-      });
-      console.log(`Daily reset executed for department ${departmentId} on date ${today}.`);
-    }
-
-    return settings;
-  }
-
-  async getPatients() {
-    const today = new Date().toISOString().split('T')[0];
-    const dept = await this.getDefaultDepartment();
-
-    // Retrieve today's tokens in order
-    const tokens = await prisma.queueToken.findMany({
-      where: {
-        date: today,
-        departmentId: dept.id,
-      },
-      orderBy: { tokenNumber: 'asc' },
-    });
-
-    return tokens.map(transformPatient);
-  }
-
-  async getPatientById(id: string) {
-    const token = await prisma.queueToken.findUnique({
-      where: { id },
-    });
-    if (!token) {
-      const err: CustomError = new Error('Token not found');
+  /**
+   * Get a single patient by ID.
+   */
+  async getPatientById(id: string): Promise<PatientResponse> {
+    const patient = await patientRepository.findById(id);
+    if (!patient) {
+      const err: CustomError = new Error('Patient not found');
       err.statusCode = 404;
       throw err;
     }
-    return transformPatient(token);
+    return toPatientResponse(patient);
   }
 
-  async addPatient(payload: { name: string; purpose?: string }) {
-    const today = new Date().toISOString().split('T')[0];
-    const dept = await this.getDefaultDepartment();
+  /**
+   * Register a new patient into today's queue.
+   * - Atomically issues the next token number.
+   * - Calculates estimated wait time based on waiting count × average consultation time.
+   * - Emits Socket.IO events to all connected clients.
+   */
+  async addPatient(payload: {
+    name: string;
+    purpose?: string;
+    phone?: string;
+    priority?: 'normal' | 'urgent';
+  }): Promise<PatientResponse> {
+    const today = TODAY();
 
-    // Get current settings (with automatic daily reset logic)
-    const settings = await this.getOrResetSettings(dept.id, today);
+    // Ensure queue is open
+    const settings = await queueSettingsRepository.getOrInitialize(DEPT, today);
+    if (!settings.isQueueOpen) {
+      const err: CustomError = new Error('Queue is currently closed. Please check back later.');
+      err.statusCode = 403;
+      throw err;
+    }
 
-    // Increment lastIssuedToken
-    const nextTokenNumber = settings.lastIssuedToken + 1;
+    // Atomic token generation (prevents race-condition duplicate tokens)
+    const token = await queueSettingsRepository.issueNextToken(DEPT, today);
 
-    // Update settings in database
-    await prisma.queueSettings.update({
-      where: { id: settings.id },
-      data: { lastIssuedToken: nextTokenNumber },
+    // Calculate estimated wait time: waitingPatients × averageConsultationTime
+    const counts = await patientRepository.countByStatus(today);
+    const waitingCount = counts.waiting;
+    const estimatedWaitTime =
+      payload.priority === 'urgent'
+        ? Math.max(1, Math.round(settings.averageConsultationTime * 0.5)) // urgent gets halved estimate
+        : (waitingCount + 1) * settings.averageConsultationTime;
+
+    const newPatient = await patientRepository.create({
+      name: payload.name,
+      phone: payload.phone,
+      purpose: payload.purpose,
+      token,
+      priority: payload.priority || 'normal',
+      estimatedWaitTime,
+      date: today,
     });
 
-    // Extract purpose string to use as phone number
-    const phone = payload.purpose && payload.purpose.trim() ? payload.purpose : '000-000-0000';
+    const response = toPatientResponse(newPatient);
 
-    // Create the QueueToken
-    const token = await prisma.queueToken.create({
-      data: {
-        tokenNumber: nextTokenNumber,
-        patientName: payload.name,
-        patientPhone: phone,
-        status: TokenStatus.WAITING,
-        date: today,
-        departmentId: dept.id,
-      },
-    });
+    // Update statistics
+    await clinicStatisticsRepository.incrementTotal(DEPT, today);
+    await clinicStatisticsRepository.updatePeakQueueLength(DEPT, today, waitingCount + 1);
 
-    const transformed = transformPatient(token);
-
-    // Broadcast socket updates
-    emitToAll('patientAdded', transformed);
+    // Broadcast to all connected clients
     const allPatients = await this.getPatients();
-    emitToAll('queueUpdated', allPatients);
+    emitToAll('patientAdded', { patient: response });
+    emitToAll('queueUpdated', { patients: allPatients });
 
-    return transformed;
+    return response;
   }
 
-  async updatePatientStatus(id: string, payload: { status: string }) {
-    const existing = await prisma.queueToken.findUnique({
-      where: { id },
-    });
+  /**
+   * Update a patient's status (calling, completed, no-show).
+   * - Sets the appropriate lifecycle timestamps.
+   * - Records statistics for completed patients.
+   * - Emits Socket.IO broadcasts.
+   */
+  async updatePatientStatus(
+    id: string,
+    payload: { status: string; assignedRoom?: string }
+  ): Promise<PatientResponse> {
+    const today = TODAY();
 
+    const existing = await patientRepository.findById(id);
     if (!existing) {
-      const err: CustomError = new Error('Token not found');
+      const err: CustomError = new Error('Patient not found');
       err.statusCode = 404;
       throw err;
     }
 
-    // Map client status string back to database enum
-    let dbStatus: TokenStatus = TokenStatus.WAITING;
-    if (payload.status === 'calling') {
-      dbStatus = TokenStatus.CALLED;
-    } else if (payload.status === 'completed') {
-      dbStatus = TokenStatus.COMPLETED;
-    } else if (payload.status === 'no-show' || payload.status === 'cancelled') {
-      dbStatus = TokenStatus.CANCELLED;
-    }
+    const status = payload.status as PatientStatus;
 
-    const updated = await prisma.queueToken.update({
-      where: { id },
-      data: { status: dbStatus },
+    const updated = await patientRepository.updateStatus(id, {
+      status,
+      assignedRoom: payload.assignedRoom,
     });
 
-    const transformed = transformPatient(updated);
-
-    // Broadcast updates
-    if (dbStatus === TokenStatus.CALLED) {
-      // Update the settings currentToken
-      await prisma.queueSettings.update({
-        where: { departmentId: existing.departmentId },
-        data: { currentToken: transformed.token },
-      });
-      emitToAll('currentTokenUpdated', { token: transformed.token });
-    } else if (dbStatus === TokenStatus.COMPLETED) {
-      emitToAll('patientCompleted', transformed);
+    if (!updated) {
+      const err: CustomError = new Error('Failed to update patient status');
+      err.statusCode = 500;
+      throw err;
     }
 
-    const allPatients = await this.getPatients();
-    emitToAll('queueUpdated', allPatients);
+    const response = toPatientResponse(updated);
 
-    return transformed;
+    // Side effects based on the new status
+    if (status === 'active') {
+      // Update currentToken in settings
+      await queueSettingsRepository.setCurrentToken(DEPT, updated.token);
+      emitToAll('currentTokenUpdated', {
+        token: updated.token,
+        displayToken: `QC-${updated.token}`,
+      });
+    } else if (status === 'completed') {
+      // Calculate actual consultation duration
+      const calledAt = updated.calledAt ? new Date(updated.calledAt).getTime() : 0;
+      const completedAt = updated.completedAt ? new Date(updated.completedAt).getTime() : Date.now();
+      const consultationMinutes = calledAt
+        ? Math.max(1, Math.round((completedAt - calledAt) / 60000))
+        : 0;
+
+      if (consultationMinutes > 0) {
+        const stats = await clinicStatisticsRepository.recordCompletion(DEPT, today, consultationMinutes);
+        // Keep settings average consultation time in sync with actual measurements
+        await queueSettingsRepository.updateAverageConsultationTime(
+          DEPT,
+          stats.averageActualConsultationTime || 15
+        );
+      }
+      emitToAll('patientCompleted', { patient: response });
+    } else if (status === 'no-show') {
+      await clinicStatisticsRepository.recordNoShow(DEPT, today);
+    }
+
+    // Always broadcast the full updated queue
+    const allPatients = await this.getPatients();
+    emitToAll('queueUpdated', { patients: allPatients });
+
+    return response;
   }
 
-  async deletePatient(id: string) {
-    const existing = await prisma.queueToken.findUnique({
-      where: { id },
-    });
-
-    if (!existing) {
-      const err: CustomError = new Error('Token not found');
+  /**
+   * Remove a patient from the queue (receptionist correction).
+   */
+  async deletePatient(id: string): Promise<void> {
+    const deleted = await patientRepository.deleteById(id);
+    if (!deleted) {
+      const err: CustomError = new Error('Patient not found');
       err.statusCode = 404;
       throw err;
     }
-
-    await prisma.queueToken.delete({
-      where: { id },
-    });
-
-    // Broadcast updates
     const allPatients = await this.getPatients();
-    emitToAll('queueUpdated', allPatients);
+    emitToAll('queueUpdated', { patients: allPatients });
   }
 }
 
