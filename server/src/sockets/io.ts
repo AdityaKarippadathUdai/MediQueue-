@@ -1,55 +1,15 @@
 import { Server as HttpServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import config from '../config';
-import { patientRepository } from '../repositories/patientRepository';
-import { queueSettingsRepository } from '../repositories/queueSettingsRepository';
-import { toPatientResponse } from '../services/queueService';
+import { registerQueueHandlers } from './queueSocket';
 
 let io: SocketIOServer | null = null;
 
-const TODAY = (): string => new Date().toISOString().split('T')[0];
-const DEPT = 'GEN';
-
 /**
- * Push the full current queue state to a single newly-connected socket.
- * This eliminates the need for initial HTTP polling on page load.
+ * Initialize Socket.IO on top of the HTTP server.
+ * Enables Connection State Recovery to gracefully handle client reconnects
+ * and preserve room memberships automatically.
  */
-const pushInitialState = async (socket: Socket): Promise<void> => {
-  try {
-    const today = TODAY();
-
-    const [patients, settings] = await Promise.all([
-      patientRepository.findAllForDate(today),
-      queueSettingsRepository.getOrInitialize(DEPT, today),
-    ]);
-
-    const mappedPatients = patients.map(toPatientResponse);
-
-    // Full queue list for all views
-    socket.emit('queueUpdated', { patients: mappedPatients });
-
-    // Current serving token for the display screen
-    if (settings.currentToken > 0) {
-      socket.emit('currentTokenUpdated', {
-        token: settings.currentToken,
-        displayToken: `QC-${settings.currentToken}`,
-      });
-    }
-
-    // Average consultation time for EWT calculations
-    socket.emit('averageTimeUpdated', {
-      averageConsultationTime: settings.averageConsultationTime,
-    });
-
-    // Queue open/closed status
-    socket.emit('queueStatusChanged', {
-      isQueueOpen: settings.isQueueOpen,
-    });
-  } catch (err) {
-    console.error(`[Socket] Failed to push initial state to ${socket.id}:`, err);
-  }
-};
-
 export const initSocket = (server: HttpServer): SocketIOServer => {
   io = new SocketIOServer(server, {
     cors: {
@@ -57,28 +17,41 @@ export const initSocket = (server: HttpServer): SocketIOServer => {
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
       credentials: true,
     },
-    // Prefer WebSocket, fall back to long-polling
     transports: ['websocket', 'polling'],
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+      skipMiddlewares: true,
+    },
   });
 
-  io.on('connection', async (socket: Socket) => {
-    console.log(`[Socket] Client connected: ${socket.id}`);
+  io.on('connection', (socket: Socket) => {
+    // Notify client of connection status, highlighting whether the session was recovered
+    if (socket.recovered) {
+      console.log(`[Socket] Session recovered for client: ${socket.id}`);
+      socket.emit('connectionStatus', { status: 'recovered', socketId: socket.id });
+    } else {
+      console.log(`[Socket] New client connected: ${socket.id}`);
+      socket.emit('connectionStatus', { status: 'connected', socketId: socket.id });
+    }
 
-    // Immediately hydrate the new client with current queue state
-    await pushInitialState(socket);
+    // Register queue management handlers
+    registerQueueHandlers(io!, socket);
 
     socket.on('disconnect', (reason) => {
       console.log(`[Socket] Client disconnected: ${socket.id} (reason: ${reason})`);
     });
 
     socket.on('error', (err) => {
-      console.error(`[Socket] Error from ${socket.id}:`, err);
+      console.error(`[Socket] Error on socket ${socket.id}:`, err);
     });
   });
 
   return io;
 };
 
+/**
+ * Get the initialized Socket.IO server instance.
+ */
 export const getIO = (): SocketIOServer => {
   if (!io) {
     throw new Error('Socket.IO has not been initialized. Call initSocket first.');
@@ -87,13 +60,34 @@ export const getIO = (): SocketIOServer => {
 };
 
 /**
- * Broadcast an event and payload to ALL connected clients.
- * Called by services after every state mutation.
+ * Broadcast an event to ALL connected clients across all rooms.
  */
 export const emitToAll = (event: string, data: unknown): void => {
   try {
     getIO().emit(event, data);
   } catch (err) {
-    console.error(`[Socket] Emit failed for event "${event}":`, err);
+    console.error(`[Socket] Broadcast to all failed for "${event}":`, err);
+  }
+};
+
+/**
+ * Send an event to all clients in a specific room (e.g. 'reception', 'display', 'patients').
+ */
+export const emitToRoom = (room: string, event: string, data: unknown): void => {
+  try {
+    getIO().to(room).emit(event, data);
+  } catch (err) {
+    console.error(`[Socket] Send to room "${room}" failed for event "${event}":`, err);
+  }
+};
+
+/**
+ * Send an event specifically to a patient's personal device room.
+ */
+export const emitToPatient = (patientId: string, event: string, data: unknown): void => {
+  try {
+    getIO().to(`patient:${patientId}`).emit(event, data);
+  } catch (err) {
+    console.error(`[Socket] Send to patient room "patient:${patientId}" failed for event "${event}":`, err);
   }
 };
