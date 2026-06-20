@@ -75,12 +75,7 @@ const QueueSettingsSchema = new Schema<IQueueSettings>(
   }
 );
 
-// ─────────────────────────────────────────────
-// Indexes
-// ─────────────────────────────────────────────
-
 // departmentCode is already unique from schema definition
-QueueSettingsSchema.index({ departmentCode: 1 }, { unique: true });
 
 // ─────────────────────────────────────────────
 // Static Methods
