@@ -126,9 +126,6 @@ const PatientSchema = new Schema<IPatient>(
 // Indexes
 // ─────────────────────────────────────────────
 
-// Primary lookup: all patients for today's queue in order
-PatientSchema.index({ date: 1, token: 1 });
-
 // Fast active-patient lookup (called by "Now Serving" display)
 PatientSchema.index({ date: 1, status: 1 });
 
