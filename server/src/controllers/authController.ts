@@ -1,21 +1,30 @@
 import { Request, Response } from 'express';
 import config from '../config';
+import { sendResponse } from '../utils/response';
 
 export class AuthController {
   /**
-   * POST /api/auth/verify-pin
-   * Validates the receptionist PIN. The frontend stores the access grant
-   * locally; this endpoint simply confirms correctness.
+   * POST /api/reception/login
+   * Validates receptionist credentials (PIN).
    */
-  verifyPin(req: Request, res: Response): void {
+  login(req: Request, res: Response): void {
     const { pin } = req.body;
 
     if (!pin || pin !== config.receptionistPin) {
-      res.status(401).json({ success: false, message: 'Invalid Access PIN.' });
+      sendResponse(res, 401, false, 'Invalid Access PIN.', null);
       return;
     }
 
-    res.status(200).json({ success: true, message: 'Access granted.' });
+    sendResponse(res, 200, true, 'Access granted.', {
+      token: config.receptionistPin, // Return the verified PIN to be used as header value
+    });
+  }
+
+  /**
+   * Keep verifyPin for backward compatibility/internal router fallback
+   */
+  verifyPin(req: Request, res: Response): void {
+    this.login(req, res);
   }
 }
 
