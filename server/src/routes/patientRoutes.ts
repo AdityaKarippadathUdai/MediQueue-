@@ -8,7 +8,12 @@ const router = Router();
 
 // Public — anyone can view the queue
 router.get('/', patientController.getPatients.bind(patientController));
-router.get('/:id', validate(patientIdSchema), patientController.getPatientById.bind(patientController));
+
+// Polymorphic lookup by token number or MongoDB ID (no strict hex-only check to permit integers)
+router.get('/:token', patientController.getPatientByTokenOrId.bind(patientController));
+
+// Specific status check for a patient
+router.get('/:id/status', validate(patientIdSchema), patientController.getPatientStatus.bind(patientController));
 
 // Receptionist-only — requires PIN header
 router.post('/', validate(addPatientSchema), patientController.addPatient.bind(patientController));
