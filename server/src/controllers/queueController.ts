@@ -41,8 +41,18 @@ export class QueueController {
 
   async getStatistics(req: Request, res: Response, next: NextFunction) {
     try {
-      const stats = await queueService.getStatistics();
+      const stats = await queueService.getDashboardStatistics();
       res.status(200).json(stats);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async calculateWaitTime(req: Request, res: Response, next: NextFunction) {
+    try {
+      const priority = (req.query.priority as any) === 'urgent' ? 'urgent' : 'normal';
+      const waitTime = await queueService.calculateWaitTime(priority);
+      res.status(200).json({ estimatedWaitTime: waitTime });
     } catch (err) {
       next(err);
     }
