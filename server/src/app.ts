@@ -1,10 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import routes from './routes';
 import errorMiddleware from './middleware/error';
+import loggingMiddleware from './middleware/logging';
+import rateLimiter from './middleware/rateLimiter';
 import config from './config';
+import { sendResponse } from './utils/response';
 
 const app = express();
 
@@ -20,18 +22,28 @@ app.use(
   })
 );
 
-// Request logging via Morgan
-if (config.nodeEnv !== 'test') {
-  app.use(morgan(config.nodeEnv === 'development' ? 'dev' : 'combined'));
-}
+// Register custom request logger middleware globally
+app.use(loggingMiddleware);
+
+// Register global rate-limiting middleware (excludes health check)
+app.use(rateLimiter);
 
 // Parse JSON and URL-encoded request bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint
+// Health check endpoint (publicly accessible, standardized response format)
 app.get('/health', (req, res) => {
-  res.status(200).json({
+  sendResponse(res, 200, true, 'Queue Cure API is healthy and operational.', {
+    status: 'OK',
+    environment: config.nodeEnv,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Also mount health check under /api/health for routing consistency
+app.get('/api/health', (req, res) => {
+  sendResponse(res, 200, true, 'Queue Cure API is healthy and operational.', {
     status: 'OK',
     environment: config.nodeEnv,
     timestamp: new Date().toISOString(),
@@ -41,12 +53,12 @@ app.get('/health', (req, res) => {
 // Mount all API endpoints under /api
 app.use('/api', routes);
 
-// Fallback handler for unmapped routes
+// Fallback handler for unmapped routes (standardized response format)
 app.use((req, res) => {
-  res.status(404).json({ message: `Route ${req.method} ${req.url} not found` });
+  sendResponse(res, 404, false, `Route ${req.method} ${req.originalUrl} not found.`, null);
 });
 
-// Register global error handler
+// Register global centralized error handler
 app.use(errorMiddleware);
 
 export default app;
