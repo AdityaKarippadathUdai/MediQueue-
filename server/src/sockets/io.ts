@@ -3,7 +3,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import config from '../config';
 import { patientRepository } from '../repositories/patientRepository';
 import { queueSettingsRepository } from '../repositories/queueSettingsRepository';
-import { toPatientResponse } from '../services/patientService';
+import { toPatientResponse } from '../services/queueService';
 
 let io: SocketIOServer | null = null;
 
