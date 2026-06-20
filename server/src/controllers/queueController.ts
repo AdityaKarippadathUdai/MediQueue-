@@ -1,11 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import queueService from '../services/queueService';
+import { sendResponse } from '../utils/response';
 
 export class QueueController {
   async getQueueStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const status = await queueService.getQueueStatus();
-      res.status(200).json(status);
+      sendResponse(res, 200, true, 'Queue status retrieved successfully.', status);
     } catch (err) {
       next(err);
     }
@@ -15,7 +16,7 @@ export class QueueController {
     try {
       const room = req.body?.room;
       const patient = await queueService.callNextPatient(room);
-      res.status(200).json(patient);
+      sendResponse(res, 200, true, 'Next patient called successfully.', patient);
     } catch (err) {
       next(err);
     }
@@ -24,7 +25,7 @@ export class QueueController {
   async updateAverageTime(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await queueService.updateAverageTime(req.body.averageConsultationTime);
-      res.status(200).json(result);
+      sendResponse(res, 200, true, 'Average consultation time updated successfully.', result);
     } catch (err) {
       next(err);
     }
@@ -33,7 +34,7 @@ export class QueueController {
   async setQueueOpen(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await queueService.setQueueOpen(req.body.isQueueOpen);
-      res.status(200).json(result);
+      sendResponse(res, 200, true, `Queue ${req.body.isQueueOpen ? 'opened' : 'closed'} successfully.`, result);
     } catch (err) {
       next(err);
     }
@@ -42,7 +43,7 @@ export class QueueController {
   async getStatistics(req: Request, res: Response, next: NextFunction) {
     try {
       const stats = await queueService.getDashboardStatistics();
-      res.status(200).json(stats);
+      sendResponse(res, 200, true, 'Dashboard statistics retrieved successfully.', stats);
     } catch (err) {
       next(err);
     }
@@ -52,7 +53,9 @@ export class QueueController {
     try {
       const priority = (req.query.priority as any) === 'urgent' ? 'urgent' : 'normal';
       const waitTime = await queueService.calculateWaitTime(priority);
-      res.status(200).json({ estimatedWaitTime: waitTime });
+      sendResponse(res, 200, true, 'Estimated wait time calculated successfully.', {
+        estimatedWaitTime: waitTime,
+      });
     } catch (err) {
       next(err);
     }
