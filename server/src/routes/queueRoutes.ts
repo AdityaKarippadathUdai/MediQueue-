@@ -10,9 +10,10 @@ import {
 
 const router = Router();
 
-// Public — any connected client can see status
+// Public — any connected client can see status / wait times
 router.get('/status', queueController.getQueueStatus.bind(queueController));
 router.get('/statistics', queueController.getStatistics.bind(queueController));
+router.get('/wait-time', queueController.calculateWaitTime.bind(queueController));
 
 // Receptionist-only — requires PIN header
 router.post('/next', pinAuthMiddleware, validate(callNextPatientSchema), queueController.callNextPatient.bind(queueController));
