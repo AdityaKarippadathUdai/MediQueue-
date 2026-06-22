@@ -1,8 +1,21 @@
-import { useEffect, useState } from 'react';
-import { Socket } from 'socket.io-client';
-import { getSocket } from '../services/socket';
+import {useCallback, useEffect, useState} from 'react';
+import {Socket} from 'socket.io-client';
+import {getSocket} from '../services/socket';
 
 export type SocketStatus = 'connected' | 'connecting' | 'disconnected';
+export type QueueSocketRoom = 'reception' | 'patients' | 'display';
+
+const joinedRooms = new Set<QueueSocketRoom>();
+
+const emitRoomJoin = (socket: Socket, room: QueueSocketRoom) => {
+  if (room === 'reception') {
+    socket.emit('joinReception');
+  } else if (room === 'patients') {
+    socket.emit('joinPatient');
+  } else if (room === 'display') {
+    socket.emit('joinDisplay');
+  }
+};
 
 export const useSocket = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -11,12 +24,11 @@ export const useSocket = () => {
   useEffect(() => {
     const s = getSocket();
     setSocket(s);
-
-    // Initial status check
     setStatus(s.connected ? 'connected' : 'connecting');
 
     const onConnect = () => {
       setStatus('connected');
+      joinedRooms.forEach((room) => emitRoomJoin(s, room));
     };
 
     const onDisconnect = () => {
@@ -31,9 +43,8 @@ export const useSocket = () => {
     s.on('disconnect', onDisconnect);
     s.on('connect_error', onConnectError);
 
-    // If already connected, trigger check
     if (s.connected) {
-      setStatus('connected');
+      onConnect();
     }
 
     return () => {
@@ -43,5 +54,13 @@ export const useSocket = () => {
     };
   }, []);
 
-  return { socket, status, isConnected: status === 'connected' };
+  const joinRoom = useCallback((room: QueueSocketRoom) => {
+    joinedRooms.add(room);
+    const s = socket ?? getSocket();
+    if (s.connected) {
+      emitRoomJoin(s, room);
+    }
+  }, [socket]);
+
+  return {socket, status, isConnected: status === 'connected', joinRoom};
 };
