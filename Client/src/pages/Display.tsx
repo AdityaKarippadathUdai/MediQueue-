@@ -8,25 +8,12 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-// Static simulation list of clinic tokens to cycle through in Demo Preset mode
-// TODO: Real-time Socket.IO / REST API integration points for queue displays
-interface PresetCall {
-  ticketNumber: string;
-  name: string;
-  room: string;
-  purpose: string;
-  priority: 'normal' | 'urgent';
-}
-
-const PRESET_CALLS: PresetCall[] = [];
 
 export const Display: React.FC = () => {
   const navigate = useNavigate();
   const { patients, darkMode, loading, error, averageWaitTime } = useQueue();
 
-  // Screen layout modes - default to 'live' feed for real backend integration
-  const [tvSource, setTvSource] = useState<'preset' | 'live'>('live');
-  const [presetIndex, setPresetIndex] = useState<number>(0);
+  // Screen layout modes
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(true);
   const [playBuzzerRipple, setPlayBuzzerRipple] = useState(false);
   const [calledHistory, setCalledHistory] = useState<string[]>([]);
@@ -63,23 +50,19 @@ export const Display: React.FC = () => {
       return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
     });
 
-  // Get current active hero token depending on mode
-  const currentHero: PresetCall | null = (() => {
-    if (tvSource === 'preset') {
-      return PRESET_CALLS[presetIndex] || null;
-    } else {
-      const topLive = liveCallingPatients[0];
-      if (topLive) {
-        return {
-          ticketNumber: topLive.ticketNumber.startsWith('QC-') ? topLive.ticketNumber : `QC-${topLive.ticketNumber}`,
-          name: topLive.name,
-          room: topLive.assignedRoom || 'Consultation Room 1',
-          purpose: topLive.purpose || 'General Consultation',
-          priority: topLive.priority
-        };
-      }
-      return null;
+  // Get current active hero token from live patients
+  const currentHero: { ticketNumber: string; name: string; room: string; purpose: string; priority: 'normal' | 'urgent' } | null = (() => {
+    const topLive = liveCallingPatients[0];
+    if (topLive) {
+      return {
+        ticketNumber: topLive.ticketNumber.startsWith('QC-') ? topLive.ticketNumber : `QC-${topLive.ticketNumber}`,
+        name: topLive.name,
+        room: topLive.assignedRoom || 'Consultation Room 1',
+        purpose: topLive.purpose || 'General Consultation',
+        priority: topLive.priority
+      };
     }
+    return null;
   })();
 
   // Audio beeping sound synthesizer (Chime sound)
@@ -155,16 +138,16 @@ export const Display: React.FC = () => {
   useEffect(() => {
     if (!currentHero) return;
     
-    const key = `${tvSource}-${currentHero.ticketNumber}-${currentHero.room}`;
+    const key = `live-${currentHero.ticketNumber}-${currentHero.room}`;
     if (!calledHistory.includes(key)) {
       triggerAudioBeep();
       speakTokenAnnouncement(currentHero.ticketNumber, currentHero.name, currentHero.room);
       setPlayBuzzerRipple(true);
       const timer = setTimeout(() => setPlayBuzzerRipple(false), 3000);
-      setCalledHistory((prev) => [...prev, key].slice(-20)); // Keep history lean
+      setCalledHistory((prev) => [...prev, key].slice(-20));
       return () => clearTimeout(timer);
     }
-  }, [currentHero, tvSource, isAudioMuted]);
+  }, [currentHero, isAudioMuted]);
 
   return (
     <div 
@@ -240,51 +223,6 @@ export const Display: React.FC = () => {
             <span className="hidden sm:inline">{isAudioMuted ? 'Muted / Click to Unmute' : 'Voice Chimes Enabled'}</span>
             <span className="sm:hidden">{isAudioMuted ? 'Mute' : 'Live Voice'}</span>
           </button>
-
-          {/* Preset / Live Feed Switcher */}
-          <div className="p-0.8 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-80s flex">
-            <button
-              onClick={() => {
-                setTvSource('preset');
-                triggerAudioBeep();
-              }}
-              className={`px-3 py-1.5 text-[10.5px] font-black uppercase rounded-lg transition-all cursor-pointer ${
-                tvSource === 'preset'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 dark:text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Preset Demo
-            </button>
-            <button
-              onClick={() => {
-                setTvSource('live');
-                triggerAudioBeep();
-              }}
-              className={`px-3 py-1.5 text-[10.5px] font-black uppercase rounded-lg transition-all cursor-pointer ${
-                tvSource === 'live'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 dark:text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Live Feed
-            </button>
-          </div>
-
-          {/* Quick Demo Next Button (only when in Preset mode) */}
-          {tvSource === 'preset' && (
-            <button
-              onClick={() => {
-                setPresetIndex((prev) => (prev + 1) % PRESET_CALLS.length);
-              }}
-              className={`p-2 rounded-xl border transition-all cursor-pointer ${
-                darkMode ? 'border-slate-800 bg-slate-900 hover:bg-slate-800' : 'border-slate-200 bg-white hover:bg-slate-50'
-              } text-blue-500`}
-              title="Next Preset Call"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-          )}
 
         </div>
 
@@ -423,7 +361,7 @@ export const Display: React.FC = () => {
                 <span>Next preparing standby list</span>
               </h4>
               <span className="text-[10px] font-mono font-bold uppercase text-slate-400">
-                {tvSource === 'preset' ? 'Demo mode' : `${liveWaitingPatients.length} Waiting`}
+                {`${liveWaitingPatients.length} Waiting`}
               </span>
             </div>
 
