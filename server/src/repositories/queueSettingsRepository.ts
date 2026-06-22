@@ -16,24 +16,40 @@ export class QueueSettingsRepository {
     departmentCode: string = this.DEFAULT_DEPT,
     today: string
   ): Promise<IQueueSettings> {
-    let settings = await QueueSettings.findOne({ departmentCode });
+    let settings = await QueueSettings.findOneAndUpdate(
+      { departmentCode },
+      {
+        $setOnInsert: {
+          departmentCode,
+          lastResetDate: today,
+          currentToken: 0,
+          lastIssuedToken: 0,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-    if (!settings) {
-      settings = await QueueSettings.create({
-        departmentCode,
-        lastResetDate: today,
-        currentToken: 0,
-        lastIssuedToken: 0,
-      });
-      return settings;
-    }
-
-    // Daily reset: if the calendar day has changed, reset all counters
+    // Daily reset: if the calendar day has changed, reset all counters atomically and safely
     if (settings.lastResetDate !== today) {
-      settings.currentToken = 0;
-      settings.lastIssuedToken = 0;
-      settings.lastResetDate = today;
-      await settings.save();
+      const resetSettings = await QueueSettings.findOneAndUpdate(
+        { departmentCode, lastResetDate: { $ne: today } },
+        {
+          $set: {
+            currentToken: 0,
+            lastIssuedToken: 0,
+            lastResetDate: today,
+          },
+        },
+        { new: true }
+      );
+      if (resetSettings) {
+        settings = resetSettings;
+      } else {
+        const freshSettings = await QueueSettings.findOne({ departmentCode });
+        if (freshSettings) {
+          settings = freshSettings;
+        }
+      }
     }
 
     return settings;
@@ -47,18 +63,18 @@ export class QueueSettingsRepository {
     departmentCode: string = this.DEFAULT_DEPT,
     today: string
   ): Promise<number> {
+    // Ensure settings are initialized/reset for the day atomically
+    await this.getOrInitialize(departmentCode, today);
+
+    // Atomically increment and return the token
     const settings = await QueueSettings.findOneAndUpdate(
       { departmentCode },
       { $inc: { lastIssuedToken: 1 } },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { new: true }
     );
 
-    // If this was the first token of the day and the date is stale, initialize properly
-    if (!settings.lastResetDate || settings.lastResetDate !== today) {
-      await QueueSettings.updateOne(
-        { departmentCode },
-        { $set: { lastResetDate: today, currentToken: 0 } }
-      );
+    if (!settings) {
+      throw new Error('Failed to issue next token: settings not found.');
     }
 
     return settings.lastIssuedToken;
