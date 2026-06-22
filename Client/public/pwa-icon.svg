@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>Queue Cure</title>
+  <rect width="512" height="512" rx="112" fill="#0f766e"/>
+  <circle cx="256" cy="256" r="184" fill="#f8fafc" opacity=".96"/>
+  <path d="M160 266h58l26-76 46 145 31-69h31" fill="none" stroke="#0f766e" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M256 132c-41-45-113-22-113 42 0 69 77 114 113 151 36-37 113-82 113-151 0-64-72-87-113-42z" fill="#14b8a6" opacity=".18"/>
+  <circle cx="363" cy="363" r="58" fill="#2563eb"/>
+  <path d="M337 363h52M363 337v52" stroke="#fff" stroke-width="22" stroke-linecap="round"/>
+</svg>
