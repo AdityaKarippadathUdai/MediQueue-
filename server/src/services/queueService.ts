@@ -39,34 +39,6 @@ export const toPatientResponse = (p: IPatient): PatientResponse => {
  * Detects if replica sets are not supported (e.g., local standalone MongoDB) and
  * falls back to non-transactional execution to prevent failures.
  */
-async function runWithTransaction<T>(
-  fn: (session: mongoose.ClientSession) => Promise<T>
-): Promise<T> {
-  const session = await mongoose.startSession();
-  try {
-    let result: T;
-    await session.withTransaction(async () => {
-      result = await fn(session);
-    });
-    return result!;
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    if (
-      errorMsg.includes('Replica Set') ||
-      errorMsg.includes('Transaction numbers are only allowed') ||
-      (error as any).codeName === 'IllegalOperation'
-    ) {
-      console.warn(
-        '[QueueService] Transactions are not supported by this MongoDB server configuration. Falling back to non-transactional operations.'
-      );
-      return fn(undefined as any);
-    }
-    throw error;
-  } finally {
-    await session.endSession();
-  }
-}
-
 export class QueueService {
   /**
    * GET /api/patients
@@ -133,7 +105,7 @@ export class QueueService {
    * - Atomically issues the next token number.
    * - Calculates estimated wait time.
    * - Inserts the patient and increments clinic statistics.
-   * Runs in a transaction with local fallback.
+   * Transaction-free atomic execution.
    */
   async addPatient(payload: {
     name: string;
@@ -143,83 +115,58 @@ export class QueueService {
   }): Promise<PatientResponse> {
     const today = TODAY();
 
-    return runWithTransaction(async (session) => {
-      // 1. Check if the queue is open
-      const settings = await queueSettingsRepository.getOrInitialize(DEPT, today);
-      if (!settings.isQueueOpen) {
-        const err: CustomError = new Error('Queue is currently closed. Please check back later.');
-        err.statusCode = 403;
-        throw err;
-      }
+    // 1. Check if the queue is open
+    const settings = await queueSettingsRepository.getOrInitialize(DEPT, today);
+    if (!settings.isQueueOpen) {
+      const err: CustomError = new Error('Queue is currently closed. Please check back later.');
+      err.statusCode = 403;
+      throw err;
+    }
 
-      // 2. Atomically increment last issued token inside transaction
-      const settingsWithToken = await QueueSettings.findOneAndUpdate(
-        { departmentCode: DEPT },
-        { $inc: { lastIssuedToken: 1 } },
-        { new: true, upsert: true, setDefaultsOnInsert: true, session }
-      ).exec();
+    // 2. Atomically increment and issue next token
+    const token = await queueSettingsRepository.issueNextToken(DEPT, today);
 
-      if (!settingsWithToken) {
-        const err: CustomError = new Error('Failed to generate token');
-        err.statusCode = 500;
-        throw err;
-      }
+    // 3. Count waiting patients to calculate estimated wait time
+    const waitingCount = await Patient.countDocuments({ date: today, status: 'waiting' }).exec();
 
-      const token = settingsWithToken.lastIssuedToken;
+    const estimatedWaitTime =
+      payload.priority === 'urgent'
+        ? Math.max(1, Math.round(settings.averageConsultationTime * 0.5)) // urgent gets halved estimate
+        : (waitingCount + 1) * settings.averageConsultationTime;
 
-      // 3. Count waiting patients to calculate estimated wait time
-      const waitingCount = await Patient.countDocuments({ date: today, status: 'waiting' })
-        .session(session)
-        .exec();
-
-      const estimatedWaitTime =
-        payload.priority === 'urgent'
-          ? Math.max(1, Math.round(settings.averageConsultationTime * 0.5)) // urgent gets halved estimate
-          : (waitingCount + 1) * settings.averageConsultationTime;
-
-      // 4. Create patient record
-      const newPatient = new Patient({
-        name: payload.name,
-        phone: payload.phone || '000-000-0000',
-        purpose: payload.purpose || 'General Consultation',
-        token,
-        priority: payload.priority || 'normal',
-        estimatedWaitTime,
-        date: today,
-        status: 'waiting',
-        joinedAt: new Date(),
-      });
-      await newPatient.save({ session });
-
-      // 5. Update statistics
-      await ClinicStatistics.findOneAndUpdate(
-        { date: today, departmentCode: DEPT },
-        { $inc: { totalPatientsToday: 1 } },
-        { upsert: true, setDefaultsOnInsert: true, session }
-      ).exec();
-
-      await ClinicStatistics.findOneAndUpdate(
-        { date: today, departmentCode: DEPT, peakQueueLength: { $lt: waitingCount + 1 } },
-        { $set: { peakQueueLength: waitingCount + 1 } },
-        { session }
-      ).exec();
-
-      return toPatientResponse(newPatient);
-    }).then(async (response) => {
-      // Broadcast events after transaction commits successfully
-      const allPatients = await this.getPatients();
-      emitToAll('patientAdded', { patient: response });
-      emitToAll('queueUpdated', { patients: allPatients });
-
-      // Trigger status position refresh for other waiting patients
-      await this.broadcastPatientStatusUpdates();
-
-      // Push updated stats specifically to receptionist dashboard
-      const stats = await this.getDashboardStatistics();
-      emitToRoom('reception', 'dashboardStatsUpdated', stats);
-
-      return response;
+    // 4. Create patient record
+    const newPatient = new Patient({
+      name: payload.name,
+      phone: payload.phone || '000-000-0000',
+      purpose: payload.purpose || 'General Consultation',
+      token,
+      priority: payload.priority || 'normal',
+      estimatedWaitTime,
+      date: today,
+      status: 'waiting',
+      joinedAt: new Date(),
     });
+    await newPatient.save();
+
+    // 5. Update statistics atomically
+    await clinicStatisticsRepository.incrementTotal(DEPT, today);
+    await clinicStatisticsRepository.updatePeakQueueLength(DEPT, today, waitingCount + 1);
+
+    const response = toPatientResponse(newPatient);
+
+    // Broadcast events
+    const allPatients = await this.getPatients();
+    emitToAll('patientAdded', { patient: response });
+    emitToAll('queueUpdated', { patients: allPatients });
+
+    // Trigger status position refresh for other waiting patients
+    await this.broadcastPatientStatusUpdates();
+
+    // Push updated stats specifically to receptionist dashboard
+    const stats = await this.getDashboardStatistics();
+    emitToRoom('reception', 'dashboardStatsUpdated', stats);
+
+    return response;
   }
 
   /**
@@ -232,84 +179,80 @@ export class QueueService {
   async callNextPatient(room?: string): Promise<PatientResponse> {
     const today = TODAY();
 
-    return runWithTransaction(async (session) => {
-      const settings = await queueSettingsRepository.getOrInitialize(DEPT, today);
+    const settings = await queueSettingsRepository.getOrInitialize(DEPT, today);
 
-      if (!settings.isQueueOpen) {
-        const err: CustomError = new Error('Queue is currently closed.');
-        err.statusCode = 403;
+    if (!settings.isQueueOpen) {
+      const err: CustomError = new Error('Queue is currently closed.');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Optimistic concurrency control retry loop
+    let nextPatient = null;
+    let updatedPatient = null;
+    let retries = 0;
+    const maxRetries = 5;
+
+    while (!updatedPatient && retries < maxRetries) {
+      // Query next waiting patient
+      nextPatient = await Patient.findOne({ date: today, status: 'waiting' })
+        .sort({ priority: -1, token: 1 }) // Urgent priority first (-1), then token number ascending (1)
+        .exec();
+
+      if (!nextPatient) {
+        const err: CustomError = new Error('No patients waiting in queue');
+        err.statusCode = 404;
         throw err;
       }
 
-      // Optimistic concurrency control retry loop
-      let nextPatient = null;
-      let updatedPatient = null;
-      let retries = 0;
-      const maxRetries = 5;
-
-      while (!updatedPatient && retries < maxRetries) {
-        // Query next waiting patient
-        nextPatient = await Patient.findOne({ date: today, status: 'waiting' })
-          .sort({ priority: -1, token: 1 }) // Urgent priority first (-1), then token number ascending (1)
-          .session(session)
-          .exec();
-
-        if (!nextPatient) {
-          const err: CustomError = new Error('No patients waiting in queue');
-          err.statusCode = 404;
-          throw err;
-        }
-
-        // Attempt to atomically update status to 'active' ONLY if it is still 'waiting'
-        updatedPatient = await Patient.findOneAndUpdate(
-          { _id: nextPatient._id, status: 'waiting' },
-          {
-            $set: {
-              status: 'active',
-              calledAt: new Date(),
-              assignedRoom: room ?? settings.currentRoom,
-            },
+      // Attempt to atomically update status to 'active' ONLY if it is still 'waiting'
+      updatedPatient = await Patient.findOneAndUpdate(
+        { _id: nextPatient._id, status: 'waiting' },
+        {
+          $set: {
+            status: 'active',
+            calledAt: new Date(),
+            assignedRoom: room ?? settings.currentRoom,
           },
-          { new: true, session }
-        ).exec();
-
-        retries++;
-      }
-
-      if (!updatedPatient) {
-        const err: CustomError = new Error(
-          'Failed to call next patient due to concurrent updates. Please try again.'
-        );
-        err.statusCode = 409;
-        throw err;
-      }
-
-      // Update currentToken in settings
-      await QueueSettings.findOneAndUpdate(
-        { departmentCode: DEPT },
-        { $set: { currentToken: updatedPatient.token } },
-        { session }
+        },
+        { new: true }
       ).exec();
 
-      return toPatientResponse(updatedPatient);
-    }).then(async (response) => {
-      // Broadcast to displays and patient devices after transaction commits
-      emitToAll('currentTokenUpdated', {
-        token: response.token,
-        displayToken: `QC-${response.token}`,
-      });
-      const allPatients = await this.getPatients();
-      emitToAll('queueUpdated', { patients: allPatients });
+      retries++;
+    }
 
-      // Trigger status position refresh for other waiting patients
-      await this.broadcastPatientStatusUpdates();
+    if (!updatedPatient) {
+      const err: CustomError = new Error(
+        'Failed to call next patient due to concurrent updates. Please try again.'
+      );
+      err.statusCode = 409;
+      throw err;
+    }
 
-      // Push updated stats specifically to receptionist dashboard
-      const stats = await this.getDashboardStatistics();
-      emitToRoom('reception', 'dashboardStatsUpdated', stats);
+    // Update currentToken in settings
+    await QueueSettings.findOneAndUpdate(
+      { departmentCode: DEPT },
+      { $set: { currentToken: updatedPatient.token } }
+    ).exec();
 
-      return response;
+    const response = toPatientResponse(updatedPatient);
+
+    // Broadcast to displays and patient devices
+    emitToAll('currentTokenUpdated', {
+      token: response.token,
+      displayToken: `QC-${response.token}`,
     });
+    const allPatients = await this.getPatients();
+    emitToAll('queueUpdated', { patients: allPatients });
+
+    // Trigger status position refresh for other waiting patients
+    await this.broadcastPatientStatusUpdates();
+
+    // Push updated stats specifically to receptionist dashboard
+    const stats = await this.getDashboardStatistics();
+    emitToRoom('reception', 'dashboardStatsUpdated', stats);
+
+    return response;
   }
 
   /**
@@ -472,96 +415,68 @@ export class QueueService {
     const today = TODAY();
     const status = payload.status as PatientStatus;
 
-    return runWithTransaction(async (session) => {
-      const existing = await Patient.findById(id).session(session).exec();
-      if (!existing) {
-        const err: CustomError = new Error('Patient not found');
-        err.statusCode = 404;
-        throw err;
-      }
+    const existing = await Patient.findById(id).exec();
+    if (!existing) {
+      const err: CustomError = new Error('Patient not found');
+      err.statusCode = 404;
+      throw err;
+    }
 
-      if (existing.status === status) {
-        return toPatientResponse(existing);
-      }
+    if (existing.status === status) {
+      return toPatientResponse(existing);
+    }
 
-      const updateFields: any = { status };
-      if (payload.assignedRoom) {
-        updateFields.assignedRoom = payload.assignedRoom;
-      }
+    const updateFields: any = { status };
+    if (payload.assignedRoom) {
+      updateFields.assignedRoom = payload.assignedRoom;
+    }
 
-      if (status === 'active') {
-        updateFields.calledAt = new Date();
-      } else if (status === 'completed' || status === 'no-show') {
-        updateFields.completedAt = new Date();
-      }
+    if (status === 'active') {
+      updateFields.calledAt = new Date();
+    } else if (status === 'completed' || status === 'no-show') {
+      updateFields.completedAt = new Date();
+    }
 
-      const updated = await Patient.findByIdAndUpdate(
-        id,
-        { $set: updateFields },
-        { new: true, runValidators: true, session }
+    const updated = await Patient.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    ).exec();
+
+    if (!updated) {
+      const err: CustomError = new Error('Failed to update patient status');
+      err.statusCode = 500;
+      throw err;
+    }
+
+    // Handle status specific side effects
+    if (status === 'active') {
+      await QueueSettings.findOneAndUpdate(
+        { departmentCode: DEPT },
+        { $set: { currentToken: updated.token } }
       ).exec();
+    } else if (status === 'completed') {
+      const calledAt = updated.calledAt ? new Date(updated.calledAt).getTime() : 0;
+      const completedAt = updated.completedAt ? new Date(updated.completedAt).getTime() : Date.now();
+      const consultationMinutes = calledAt
+        ? Math.max(1, Math.round((completedAt - calledAt) / 60000))
+        : 0;
 
-      if (!updated) {
-        const err: CustomError = new Error('Failed to update patient status');
-        err.statusCode = 500;
-        throw err;
-      }
-
-      // Handle status specific side effects inside transaction
-      if (status === 'active') {
-        await QueueSettings.findOneAndUpdate(
-          { departmentCode: DEPT },
-          { $set: { currentToken: updated.token } },
-          { session }
-        ).exec();
-      } else if (status === 'completed') {
-        const calledAt = updated.calledAt ? new Date(updated.calledAt).getTime() : 0;
-        const completedAt = updated.completedAt ? new Date(updated.completedAt).getTime() : Date.now();
-        const consultationMinutes = calledAt
-          ? Math.max(1, Math.round((completedAt - calledAt) / 60000))
-          : 0;
-
-        if (consultationMinutes > 0) {
-          const stats = await ClinicStatistics.findOneAndUpdate(
-            { date: today, departmentCode: DEPT },
-            {
-              $inc: {
-                completedPatientsToday: 1,
-                totalConsultationMinutes: consultationMinutes,
-              },
-            },
-            { new: true, upsert: true, setDefaultsOnInsert: true, session }
+      if (consultationMinutes > 0) {
+        const stats = await clinicStatisticsRepository.recordCompletion(DEPT, today, consultationMinutes);
+        if (stats) {
+          const newAvg = stats.averageActualConsultationTime > 0 ? stats.averageActualConsultationTime : 15;
+          await QueueSettings.findOneAndUpdate(
+            { departmentCode: DEPT },
+            { $set: { averageConsultationTime: newAvg } }
           ).exec();
-
-          if (stats) {
-            const newAvg =
-              stats.completedPatientsToday > 0
-                ? Math.round(stats.totalConsultationMinutes / stats.completedPatientsToday)
-                : 15;
-
-            await ClinicStatistics.findOneAndUpdate(
-              { date: today, departmentCode: DEPT },
-              { $set: { averageActualConsultationTime: newAvg } },
-              { session }
-            ).exec();
-
-            await QueueSettings.findOneAndUpdate(
-              { departmentCode: DEPT },
-              { $set: { averageConsultationTime: newAvg } },
-              { session }
-            ).exec();
-          }
         }
-      } else if (status === 'no-show') {
-        await ClinicStatistics.findOneAndUpdate(
-          { date: today, departmentCode: DEPT },
-          { $inc: { noShowPatientsToday: 1 } },
-          { upsert: true, setDefaultsOnInsert: true, session }
-        ).exec();
       }
+    } else if (status === 'no-show') {
+      await clinicStatisticsRepository.recordNoShow(DEPT, today);
+    }
 
-      return toPatientResponse(updated);
-    }).then(async (response) => {
+    const response = toPatientResponse(updated);
       // Broadcast updates
       if (status === 'active') {
         emitToAll('currentTokenUpdated', {
