@@ -23,21 +23,15 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-import { PWAInstructionsModal } from '../components/PWAInstallComponents';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const { darkMode } = useQueue();
   const [greeting, setGreeting] = useState('Welcome to Queue Cure');
-  const [showInstructions, setShowInstructions] = useState(false);
-
-  const { installState, isInstallable, installApp, dismissPrompt, completeSimulatedInstall } = usePWAInstall();
+  const { installState, isInstallable, installApp, dismissPrompt } = usePWAInstall();
 
   const handleHomeInstallClick = async () => {
-    const res = await installApp();
-    if (res.outcome === 'fallback') {
-      setShowInstructions(true);
-    }
+    await installApp();
   };
 
   // Dynamic empathetic clinical greeting based on current local time
@@ -158,20 +152,14 @@ export const Home: React.FC = () => {
             </button>
             <button
               onClick={handleHomeInstallClick}
-              className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600 text-white font-extrabold text-[10.5px] uppercase tracking-wider transition-all cursor-pointer shadow-xs"
+              disabled={installState === 'prompting'}
+              className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600 disabled:opacity-60 text-white font-extrabold text-[10.5px] uppercase tracking-wider transition-all cursor-pointer shadow-xs"
             >
-              Install App
+              {installState === 'prompting' ? 'Opening...' : 'Install App'}
             </button>
           </div>
         </motion.div>
       )}
-
-      {/* Manual Instruction Guide Modal */}
-      <PWAInstructionsModal 
-        isOpen={showInstructions} 
-        onClose={() => setShowInstructions(false)}
-        onSimulateInstall={completeSimulatedInstall}
-      />
 
       {/* ================= CLINIC CARD OPTIONS GRID ================= */}
       <motion.div 
