@@ -17,7 +17,7 @@ export interface ApiPatientResponse {
   _id: string;
   name: string;
   token: number | string;
-  status: 'waiting' | 'calling' | 'completed' | 'no-show';
+  status: 'waiting' | 'active' | 'calling' | 'completed' | 'no-show';
   purpose?: string;
   priority?: 'normal' | 'urgent';
   joinedAt?: string;
@@ -32,6 +32,20 @@ export interface ApiQueueStatus {
   averageConsultationTime: number;
 }
 
+interface ApiEnvelope<T> {
+  success?: boolean;
+  message?: string;
+  data: T;
+}
+
+const unwrap = <T>(body: T | ApiEnvelope<T>): T => {
+  if (body && typeof body === 'object' && 'data' in body) {
+    return (body as ApiEnvelope<T>).data;
+  }
+
+  return body as T;
+};
+
 /**
  * 1. addPatient - POST /api/patients
  */
@@ -40,42 +54,42 @@ export async function addPatient(patientData: {
   purpose?: string;
   priority?: 'normal' | 'urgent';
 }): Promise<ApiPatientResponse> {
-  const response = await api.post<ApiPatientResponse>('/api/patients', patientData);
-  return response.data;
+  const response = await api.post<ApiPatientResponse | ApiEnvelope<ApiPatientResponse>>('/api/patients', patientData);
+  return unwrap(response.data);
 }
 
 /**
  * 2. getPatients - GET /api/patients
  */
 export async function getPatients(): Promise<ApiPatientResponse[]> {
-  const response = await api.get<ApiPatientResponse[]>('/api/patients');
-  return response.data;
+  const response = await api.get<ApiPatientResponse[] | ApiEnvelope<ApiPatientResponse[]>>('/api/patients');
+  return unwrap(response.data);
 }
 
 /**
  * 3. callNextPatient - POST /api/queue/next
  */
 export async function callNextPatient(room?: string): Promise<ApiPatientResponse> {
-  const response = await api.post<ApiPatientResponse>('/api/queue/next', { room });
-  return response.data;
+  const response = await api.post<ApiPatientResponse | ApiEnvelope<ApiPatientResponse>>('/api/queue/next', { room });
+  return unwrap(response.data);
 }
 
 /**
  * 4. updateAverageTime - PUT /api/queue/average-time
  */
 export async function updateAverageTime(minutes: number): Promise<{ averageConsultationTime: number }> {
-  const response = await api.put<{ averageConsultationTime: number }>('/api/queue/average-time', {
+  const response = await api.put<{ averageConsultationTime: number } | ApiEnvelope<{ averageConsultationTime: number }>>('/api/queue/average-time', {
     averageConsultationTime: minutes,
   });
-  return response.data;
+  return unwrap(response.data);
 }
 
 /**
  * 5. getQueueStatus - GET /api/queue/status
  */
 export async function getQueueStatus(): Promise<ApiQueueStatus> {
-  const response = await api.get<ApiQueueStatus>('/api/queue/status');
-  return response.data;
+  const response = await api.get<ApiQueueStatus | ApiEnvelope<ApiQueueStatus>>('/api/queue/status');
+  return unwrap(response.data);
 }
 
 /**
@@ -85,8 +99,8 @@ export async function updatePatientStatus(
   id: string,
   payload: { status: string; assignedRoom?: string }
 ): Promise<ApiPatientResponse> {
-  const response = await api.put<ApiPatientResponse>(`/api/patients/${id}`, payload);
-  return response.data;
+  const response = await api.put<ApiPatientResponse | ApiEnvelope<ApiPatientResponse>>(`/api/patients/${id}`, payload);
+  return unwrap(response.data);
 }
 
 /**
