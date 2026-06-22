@@ -11,7 +11,11 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export const Display: React.FC = () => {
   const navigate = useNavigate();
-  const { patients, darkMode, loading, error, averageWaitTime } = useQueue();
+  const { patients, darkMode, loading, error, averageWaitTime, joinSocketRoom } = useQueue();
+
+  useEffect(() => {
+    joinSocketRoom('display');
+  }, [joinSocketRoom]);
 
   // Screen layout modes
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(true);
