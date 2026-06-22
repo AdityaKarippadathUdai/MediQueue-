@@ -477,28 +477,28 @@ export class QueueService {
     }
 
     const response = toPatientResponse(updated);
-      // Broadcast updates
-      if (status === 'active') {
-        emitToAll('currentTokenUpdated', {
-          token: response.token,
-          displayToken: `QC-${response.token}`,
-        });
-      } else if (status === 'completed') {
-        emitToAll('patientCompleted', { patient: response });
-      }
 
-      const allPatients = await this.getPatients();
-      emitToAll('queueUpdated', { patients: allPatients });
+    // Broadcast updates
+    if (status === 'active') {
+      emitToAll('currentTokenUpdated', {
+        token: response.token,
+        displayToken: `QC-${response.token}`,
+      });
+    } else if (status === 'completed') {
+      emitToAll('patientCompleted', { patient: response });
+    }
 
-      // Trigger status position refresh for other waiting patients
-      await this.broadcastPatientStatusUpdates();
+    const allPatients = await this.getPatients();
+    emitToAll('queueUpdated', { patients: allPatients });
 
-      // Push updated stats specifically to receptionist dashboard
-      const stats = await this.getDashboardStatistics();
-      emitToRoom('reception', 'dashboardStatsUpdated', stats);
+    // Trigger status position refresh for other waiting patients
+    await this.broadcastPatientStatusUpdates();
 
-      return response;
-    });
+    // Push updated stats specifically to receptionist dashboard
+    const stats = await this.getDashboardStatistics();
+    emitToRoom('reception', 'dashboardStatsUpdated', stats);
+
+    return response;
   }
 
   /**
