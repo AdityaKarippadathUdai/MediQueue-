@@ -44,8 +44,13 @@ export const Patient: React.FC = () => {
     currentToken: liveCurrentToken, 
     waitingCount,
     socketStatus,
-    darkMode 
+    darkMode,
+    joinSocketRoom
   } = useQueue();
+
+  useEffect(() => {
+    joinSocketRoom('patients');
+  }, [joinSocketRoom]);
 
   // Local storage recent tokens history key
   const RECENT_TOKENS_KEY = 'recentTrackedTokens_v2';
