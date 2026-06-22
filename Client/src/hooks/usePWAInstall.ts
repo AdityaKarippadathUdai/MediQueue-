@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import {useEffect, useState} from 'react';
 
-// Custom types for BeforeInstallPromptEvent
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
@@ -10,148 +9,159 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
-export type InstallState = 'available' | 'installing' | 'installed' | 'dismissed';
+export type InstallState = 'unavailable' | 'available' | 'prompting' | 'installed' | 'dismissed';
 
-export const usePWAInstall = () => {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [installState, setInstallState] = useState<InstallState>('dismissed');
-  const [isStandalone, setIsStandalone] = useState<boolean>(false);
-  const [isIframe, setIsIframe] = useState<boolean>(false);
+type InstallResult = {
+  success: boolean;
+  outcome: 'accepted' | 'dismissed' | 'unavailable' | 'installed';
+};
 
-  // Check if app is already running as standalone or loaded in iframe
-  const checkEnvironment = useCallback(() => {
-    const isStandaloneMode = 
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
-    
-    setIsStandalone(isStandaloneMode);
+type InstallSnapshot = {
+  installState: InstallState;
+  isInstalled: boolean;
+  isInstallable: boolean;
+  isStandalone: boolean;
+};
 
-    const insideIframe = window.self !== window.top;
-    setIsIframe(insideIframe);
+let deferredPrompt: BeforeInstallPromptEvent | null = null;
+let installState: InstallState = 'unavailable';
+let isStandalone = false;
+let isListening = false;
 
-    return { isStandaloneMode, insideIframe };
-  }, []);
+const subscribers = new Set<() => void>();
 
-  useEffect(() => {
-    const { isStandaloneMode } = checkEnvironment();
+const getStandaloneMode = () =>
+  window.matchMedia('(display-mode: standalone)').matches ||
+  (window.navigator as Navigator & {standalone?: boolean}).standalone === true;
 
-    // Check if dismissed previously in localStorage
-    const isDismissed = localStorage.getItem('pwa_install_dismissed') === 'true';
+const emit = () => {
+  subscribers.forEach((subscriber) => subscriber());
+};
 
-    if (isStandaloneMode) {
+const setInstallState = (nextState: InstallState) => {
+  installState = nextState;
+  emit();
+};
+
+const getSnapshot = (): InstallSnapshot => ({
+  installState,
+  isInstalled: installState === 'installed' || isStandalone,
+  isInstallable: installState === 'available' && deferredPrompt !== null,
+  isStandalone,
+});
+
+const setupInstallListeners = () => {
+  if (typeof window === 'undefined' || isListening) return;
+
+  isListening = true;
+  isStandalone = getStandaloneMode();
+  installState = isStandalone ? 'installed' : 'unavailable';
+
+  const standaloneQuery = window.matchMedia('(display-mode: standalone)');
+
+  const handleStandaloneChange = () => {
+    isStandalone = getStandaloneMode();
+    if (isStandalone) {
+      deferredPrompt = null;
       setInstallState('installed');
-    } else if (isDismissed) {
-      setInstallState('dismissed');
+    } else if (!deferredPrompt && installState === 'installed') {
+      setInstallState('unavailable');
     } else {
-      setInstallState('available');
-    }
-
-    // Capture standard PWA install prompt
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-      
-      const dismissed = localStorage.getItem('pwa_install_dismissed') === 'true';
-      if (!isStandaloneMode && !dismissed) {
-        setInstallState('available');
-      }
-    };
-
-    // Listen to standard install confirmation
-    const handleAppInstalled = () => {
-      setInstallState('installed');
-      setDeferredPrompt(null);
-      setIsStandalone(true);
-      localStorage.setItem('pwa_installed_state', 'true');
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-
-    // Initial check in case it's custom browser mode
-    if (localStorage.getItem('pwa_installed_state') === 'true') {
-      setInstallState('installed');
-    }
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
-    };
-  }, [checkEnvironment]);
-
-  // Execute PWA Prompt or provide step-by-step instructions fallback
-  const installApp = async (): Promise<{ success: boolean; outcome: 'accepted' | 'dismissed' | 'fallback' }> => {
-    if (!deferredPrompt) {
-      // Return fallback state if standard prompt is unavailable (e.g. inside a container/iframe, or not met PWA conditions)
-      setInstallState('installing');
-      
-      // Simulate/trigger custom user modal or instructions
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          // Fallback simulation: we simulate successful installer if they are test-running,
-          // but we let them know it's fallback.
-          resolve({ success: false, outcome: 'fallback' });
-        }, 500);
-      });
-    }
-
-    try {
-      setInstallState('installing');
-      await deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
-      
-      if (choiceResult.outcome === 'accepted') {
-        setInstallState('installed');
-        setDeferredPrompt(null);
-        localStorage.setItem('pwa_installed_state', 'true');
-        return { success: true, outcome: 'accepted' };
-      } else {
-        setInstallState('available');
-        return { success: false, outcome: 'dismissed' };
-      }
-    } catch (error) {
-      console.error('Trigger PWA installation error:', error);
-      setInstallState('available');
-      return { success: false, outcome: 'dismissed' };
+      emit();
     }
   };
 
-  // Temporarily dismiss installer banner/card
-  const dismissPrompt = useCallback(() => {
-    localStorage.setItem('pwa_install_dismissed', 'true');
-    setInstallState('dismissed');
-  }, []);
+  const handleBeforeInstallPrompt = (event: Event) => {
+    event.preventDefault();
+    deferredPrompt = event as BeforeInstallPromptEvent;
 
-  // Force trigger resetting the prompt state for settings menu or re-triggering tests
-  const resetDismissal = useCallback(() => {
-    localStorage.removeItem('pwa_install_dismissed');
-    localStorage.removeItem('pwa_installed_state');
-    const isStandaloneMode = 
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
-    
-    if (isStandaloneMode) {
-      setInstallState('installed');
-    } else {
+    if (!getStandaloneMode()) {
       setInstallState('available');
     }
-  }, []);
+  };
 
-  // Simulate complete install on browser (mainly for gorgeous interactive demo flow)
-  const completeSimulatedInstall = useCallback(() => {
+  const handleAppInstalled = () => {
+    deferredPrompt = null;
+    isStandalone = true;
     setInstallState('installed');
-    localStorage.setItem('pwa_installed_state', 'true');
-    setIsStandalone(true);
-  }, []);
+  };
+
+  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  window.addEventListener('appinstalled', handleAppInstalled);
+  standaloneQuery.addEventListener('change', handleStandaloneChange);
+};
+
+const subscribe = (callback: () => void) => {
+  setupInstallListeners();
+  subscribers.add(callback);
+
+  return () => {
+    subscribers.delete(callback);
+  };
+};
+
+export const usePWAInstall = () => {
+  const [snapshot, setSnapshot] = useState<InstallSnapshot>(() => {
+    if (typeof window !== 'undefined') {
+      setupInstallListeners();
+    }
+
+    return getSnapshot();
+  });
+
+  useEffect(() => subscribe(() => setSnapshot(getSnapshot())), []);
+
+  const installApp = async (): Promise<InstallResult> => {
+    if (snapshot.isInstalled) {
+      return {success: true, outcome: 'installed'};
+    }
+
+    if (!deferredPrompt) {
+      setInstallState('unavailable');
+      return {success: false, outcome: 'unavailable'};
+    }
+
+    const promptEvent = deferredPrompt;
+    setInstallState('prompting');
+
+    try {
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      deferredPrompt = null;
+
+      if (choice.outcome === 'accepted') {
+        setInstallState('installed');
+        return {success: true, outcome: 'accepted'};
+      }
+
+      setInstallState('dismissed');
+      return {success: false, outcome: 'dismissed'};
+    } catch (error) {
+      console.error('PWA installation prompt failed:', error);
+      setInstallState('unavailable');
+      return {success: false, outcome: 'unavailable'};
+    }
+  };
+
+  const dismissPrompt = () => {
+    setInstallState('dismissed');
+  };
+
+  const resetDismissal = () => {
+    if (isStandalone || getStandaloneMode()) {
+      isStandalone = true;
+      setInstallState('installed');
+    } else if (deferredPrompt) {
+      setInstallState('available');
+    } else {
+      setInstallState('unavailable');
+    }
+  };
 
   return {
-    isInstallable: installState === 'available' || !!deferredPrompt,
-    isInstalled: installState === 'installed' || isStandalone,
-    installState,
-    isIframe,
+    ...snapshot,
     installApp,
     dismissPrompt,
     resetDismissal,
-    completeSimulatedInstall,
   };
 };
