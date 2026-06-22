@@ -41,8 +41,13 @@ export const Receptionist: React.FC = () => {
   const { 
     patients, receptionist, logoutReceptionist, addPatient, 
     callPatient, callNextPatient, completePatient, noShowPatient, removePatient, darkMode,
-    averageWaitTime, updateAverageConsultationTime, currentToken, waitingCount, completedCount
+    averageWaitTime, updateAverageConsultationTime, currentToken, waitingCount, completedCount,
+    joinSocketRoom
   } = useQueue();
+
+  useEffect(() => {
+    joinSocketRoom('reception');
+  }, [joinSocketRoom]);
 
   // Route protection - send staff back to auth login if not authorized
   useEffect(() => {
