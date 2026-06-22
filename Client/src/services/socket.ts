@@ -14,7 +14,7 @@ export const getSocket = (): Socket => {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
-      transports: ['websocket', 'polling'], // Fallback to polling if websocket fails
+      transports: ['websocket'],
     });
   }
   return socketInstance;
