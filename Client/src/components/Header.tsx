@@ -5,7 +5,6 @@ import { LiveBadge } from './LiveBadge';
 import { Sun, Moon, ArrowLeft, RefreshCw, Activity, HeartPulse, Settings, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-import { PWAInstructionsModal } from './PWAInstallComponents';
 
 export const Header: React.FC = () => {
   const { darkMode, toggleDarkMode, receptionist, logoutReceptionist } = useQueue();
@@ -16,14 +15,10 @@ export const Header: React.FC = () => {
   const showBackBtn = !isHome;
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const { isInstalled, installState, installApp, resetDismissal, completeSimulatedInstall } = usePWAInstall();
-  const [showGuide, setShowGuide] = useState(false);
+  const { isInstalled, isInstallable, installState, installApp, resetDismissal } = usePWAInstall();
 
   const handleHeaderInstallClick = async () => {
-    const result = await installApp();
-    if (result.outcome === 'fallback') {
-      setShowGuide(true);
-    }
+    await installApp();
   };
 
   const handlesBackClick = () => {
@@ -189,25 +184,25 @@ export const Header: React.FC = () => {
                     ) : (
                       <button
                         onClick={handleHeaderInstallClick}
-                        className="px-4 py-1.5 rounded-xl text-[10px] font-black uppercase bg-teal-600 hover:bg-teal-700 text-white tracking-widest cursor-pointer shadow-xs transition-colors"
+                        disabled={!isInstallable || installState === 'prompting'}
+                        className="px-4 py-1.5 rounded-xl text-[10px] font-black uppercase bg-teal-600 hover:bg-teal-700 disabled:bg-slate-200 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-400 text-white tracking-widest cursor-pointer disabled:cursor-not-allowed shadow-xs transition-colors"
                       >
-                        Install
+                        {installState === 'prompting' ? 'Opening' : isInstallable ? 'Install' : 'Unavailable'}
                       </button>
                     )}
                   </div>
 
-                  {/* Sandbox helper to reset/test flows */}
+                  {/* Restore the browser prompt UI after a local dismissal */}
                   <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-100 dark:border-slate-850 mt-1">
-                    <span className="text-[9px] text-slate-450 font-medium">Test installer banner again</span>
+                    <span className="text-[9px] text-slate-450 font-medium">Install state: {installState}</span>
                     <button
                       onClick={() => {
                         resetDismissal();
                         setIsSettingsOpen(false);
-                        window.alert("Installer resets! Go to home to see install option.");
                       }}
                       className="px-2.5 py-1 bg-slate-200 hover:bg-slate-250 dark:bg-slate-800 dark:hover:bg-slate-750 rounded text-[9px] font-bold text-slate-650 dark:text-slate-300 transition-colors cursor-pointer"
                     >
-                      Reset State
+                      Refresh
                     </button>
                   </div>
                 </div>
@@ -228,11 +223,6 @@ export const Header: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <PWAInstructionsModal 
-        isOpen={showGuide} 
-        onClose={() => setShowGuide(false)}
-        onSimulateInstall={completeSimulatedInstall}
-      />
     </header>
   );
 };
