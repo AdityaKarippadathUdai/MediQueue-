@@ -87,22 +87,40 @@ QueueSettingsSchema.statics.getOrInitialize = async function (
   departmentCode: string = 'GEN',
   today: string
 ): Promise<IQueueSettings> {
-  let settings = await this.findOne({ departmentCode });
+  let settings = await this.findOneAndUpdate(
+    { departmentCode },
+    {
+      $setOnInsert: {
+        departmentCode,
+        lastResetDate: today,
+        currentToken: 0,
+        lastIssuedToken: 0,
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
 
-  if (!settings) {
-    settings = await this.create({
-      departmentCode,
-      lastResetDate: today,
-    });
-    return settings;
-  }
-
-  // If the date has advanced, perform the daily reset
+  // If the date has advanced, perform the daily reset atomically and safely
   if (settings.lastResetDate !== today) {
-    settings.currentToken = 0;
-    settings.lastIssuedToken = 0;
-    settings.lastResetDate = today;
-    await settings.save();
+    const resetSettings = await this.findOneAndUpdate(
+      { departmentCode, lastResetDate: { $ne: today } },
+      {
+        $set: {
+          currentToken: 0,
+          lastIssuedToken: 0,
+          lastResetDate: today,
+        },
+      },
+      { new: true }
+    );
+    if (resetSettings) {
+      settings = resetSettings;
+    } else {
+      const freshSettings = await this.findOne({ departmentCode });
+      if (freshSettings) {
+        settings = freshSettings;
+      }
+    }
   }
 
   return settings;
