@@ -62,4 +62,3 @@ export interface ConnectionStatus {
   isConnected: boolean;
   status: 'connected' | 'connecting' | 'disconnected';
 }
-
