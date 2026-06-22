@@ -16,7 +16,6 @@ import {
   Scan,
   History,
   Camera,
-  Play,
   RotateCw,
   Clock,
   Users,
@@ -243,16 +242,6 @@ export const Patient: React.FC = () => {
     setScannerState('idle');
   };
 
-  // Simulate scanning a sample ticket
-  const simulateSuccessfulScan = (simToken: string) => {
-    setScannerState('success');
-    
-    // Successful scan countdown animation
-    setTimeout(() => {
-      closeCameraScanner();
-      navigate(`/patient/${simToken}`);
-    }, 1200);
-  };
 
   // Calculations for display times
   const getSimulatedEstimatedCallTime = () => {
@@ -984,37 +973,15 @@ export const Patient: React.FC = () => {
                   {scannerState === 'error' && (
                     <div className="space-y-2 p-2">
                       <XCircle className="w-7 h-7 text-rose-400 mx-auto" />
-                      <p className="text-white font-bold text-xs">Sandbox feed inactive</p>
+                      <p className="text-white font-bold text-xs">Camera feed unavailable</p>
                       <p className="text-slate-405 text-[9px] leading-relaxed">
-                        Use one of the pre-configured mock barcode options below for testing.
+                        Could not access camera. Please check browser permissions and try again.
                       </p>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Simulation barcode options */}
-              <div className="mt-6 w-full max-w-[280px] text-center">
-                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-2.5">
-                  Simulate QR Codes
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => simulateSuccessfulScan('108')}
-                    className="py-2 px-3 bg-white/10 hover:bg-white/15 text-white rounded-xl text-[10.5px] font-black border border-white/10 cursor-pointer flex items-center justify-center gap-1"
-                  >
-                    <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
-                    <span>Scan QC-108</span>
-                  </button>
-                  <button
-                    onClick={() => simulateSuccessfulScan('112')}
-                    className="py-2 px-3 bg-white/10 hover:bg-white/15 text-white rounded-xl text-[10.5px] font-black border border-white/10 cursor-pointer flex items-center justify-center gap-1"
-                  >
-                    <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
-                    <span>Scan QC-112</span>
-                  </button>
-                </div>
-              </div>
             </div>
 
             <div className="text-center">
