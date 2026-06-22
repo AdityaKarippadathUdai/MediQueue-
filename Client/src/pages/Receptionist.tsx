@@ -258,13 +258,13 @@ export const Receptionist: React.FC = () => {
     setTimeout(() => {
       setPrintLoading(false);
       // Construct thermal receipt popup
-      const printUrlStr = `${window.location.origin}/patient/${customQrText || (successRegisteredPatient ? successRegisteredPatient.ticketNumber : '108')}`;
+      const printUrlStr = `${window.location.origin}/patient/${customQrText || successRegisteredPatient?.ticketNumber || ''}`;
       const printW = window.open('', '_blank', 'width=350,height=520,scrollbars=yes');
       if (printW) {
         printW.document.write(`
           <html>
             <head>
-              <title>Print Token QC-${successRegisteredPatient?.ticketNumber || '108'}</title>
+              <title>Print Token QC-${successRegisteredPatient?.ticketNumber}</title>
               <style>
                 body {
                   font-family: 'Courier New', Courier, monospace;
@@ -287,9 +287,9 @@ export const Receptionist: React.FC = () => {
               <div class="title">QUEUE CURE '26</div>
               <div>STATION 1 RECEIPT</div>
               <hr style="border: 0; border-top: 1px dashed #000;" />
-              <div class="ticket-num">QC-${successRegisteredPatient?.ticketNumber || '108'}</div>
+              <div class="ticket-num">QC-${successRegisteredPatient?.ticketNumber}</div>
               <table class="meta-table">
-                <tr><td>Patient Name:</td><td><b>${successRegisteredPatient?.name || 'Rahul Sharma'}</b></td></tr>
+                <tr><td>Patient Name:</td><td><b>${successRegisteredPatient?.name || 'Patient'}</b></td></tr>
                 <tr><td>Purpose:</td><td><b>${successRegisteredPatient?.purpose || 'General Consultation'}</b></td></tr>
                 <tr><td>Urgency:</td><td><b>${(successRegisteredPatient?.priority || 'normal').toUpperCase()}</b></td></tr>
                 <tr><td>Intake Time:</td><td><b>${new Date().toLocaleTimeString()}</b></td></tr>
