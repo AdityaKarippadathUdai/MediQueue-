@@ -22,7 +22,7 @@ const PRESET_CALLS: PresetCall[] = [];
 
 export const Display: React.FC = () => {
   const navigate = useNavigate();
-  const { patients, darkMode, loading, error } = useQueue();
+  const { patients, darkMode, loading, error, averageWaitTime } = useQueue();
 
   // Screen layout modes - default to 'live' feed for real backend integration
   const [tvSource, setTvSource] = useState<'preset' | 'live'>('live');
@@ -331,7 +331,6 @@ export const Display: React.FC = () => {
                       : 'bg-white border-slate-150 shadow-sm'
                 }`}
               >
-                
                 {/* Visual pulse rings on new calls */}
                 {playBuzzerRipple && (
                   <div className="absolute inset-0 pointer-events-none bg-blue-500/2 animate-[pulse_1.2s_infinite] rounded-3xl" />
@@ -408,12 +407,6 @@ export const Display: React.FC = () => {
                 <p className="text-xs text-slate-400 max-w-[280px] mt-1.5 leading-relaxed">
                   Lobby terminal is online. New patients appear here automatically when staff triggers 'Call' at the receptionist desk.
                 </p>
-                <button
-                  onClick={() => setTvSource('preset')}
-                  className="mt-4 px-4 py-2 bg-blue-600 text-white font-extrabold text-xs uppercase rounded-xl cursor-pointer hover:bg-blue-700 transition"
-                >
-                  Load Simulation Carousel
-                </button>
               </div>
             )}
           </AnimatePresence>
@@ -439,60 +432,8 @@ export const Display: React.FC = () => {
               darkMode ? 'bg-slate-900/60 border-slate-800/80 shadow-inner' : 'bg-white border-slate-200/50 shadow-xs'
             }`}>
               
-              {tvSource === 'preset' ? (
-                // PRESET MODE SIMULATED WAITLIST
-                <div className="space-y-3 my-auto">
-                  
-                  {/* Item 1 */}
-                  <div className={`p-4 rounded-2.5xl border flex items-center justify-between transition-all ${
-                    darkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-100'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-lg font-black text-indigo-500 dark:text-indigo-400">
-                        QC-105
-                      </span>
-                      <div>
-                        <strong className="text-xs font-bold text-slate-800 dark:text-slate-100 block">Priya Patel</strong>
-                        <span className="text-[10px] text-slate-400 block leading-tight">Immunization triage</span>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-bold uppercase py-0.5 px-2 rounded-lg bg-indigo-500/10 text-indigo-600">Up Next</span>
-                  </div>
-
-                  {/* Item 2 */}
-                  <div className={`p-4 rounded-2.5xl border flex items-center justify-between transition-all ${
-                    darkMode ? 'bg-slate-955/60 border-slate-800/80' : 'bg-slate-50 border-slate-100/80'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-lg font-black text-slate-800 dark:text-slate-300">
-                        QC-106
-                      </span>
-                      <div>
-                        <strong className="text-xs font-bold text-slate-800 dark:text-slate-150 block">Amit Kumar</strong>
-                        <span className="text-[10px] text-slate-455 block leading-tight">Cardiac lab</span>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-black uppercase py-0.5 px-2 rounded-lg bg-rose-500/10 text-rose-500">Urgent</span>
-                  </div>
-
-                  {/* Item 3 */}
-                  <div className={`p-4 rounded-2.5xl border flex items-center justify-between transition-all ${
-                    darkMode ? 'bg-slate-955/60 border-slate-800/80' : 'bg-slate-50 border-slate-100/80'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-lg font-black text-slate-800 dark:text-slate-350">
-                        QC-107
-                      </span>
-                      <div>
-                        <strong className="text-xs font-bold text-slate-800 dark:text-slate-200 block">Sneha Reddy</strong>
-                        <span className="text-[10px] text-slate-455 block leading-tight">Physiotherapy rehab</span>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-bold uppercase py-0.5 px-2 rounded-lg bg-slate-200 text-slate-600">Prepared</span>
-                  </div>
-
-                </div>
-              ) : (
+              {/* LIVE MODE DYNAMIC FEED */}
+              {(
                 // LIVE MODE DYNAMIC FEED
                 <div className="flex-1 flex flex-col justify-between">
                   {liveWaitingPatients.length === 0 ? (
@@ -557,7 +498,9 @@ export const Display: React.FC = () => {
                   Clinic Counter Load status
                 </h5>
                 <p className="text-[9.5px] text-slate-450 leading-relaxed mt-1">
-                  Estimated consultation duration currently: <strong className="font-bold">12 mins</strong>. Watch tickers carefully.
+                  {averageWaitTime !== null
+                    ? <>Estimated consultation duration: <strong className="font-bold">{averageWaitTime} mins</strong>. Watch tickers carefully.</>
+                    : 'Average wait time loading...'}
                 </p>
               </div>
 
@@ -591,11 +534,11 @@ export const Display: React.FC = () => {
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
-            <span>Active Station 1: Dr. Rahul Sharma • Room 2: Nurse Maya Sen</span>
+            <span>Reception desk is active and ready for walk-in patients</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-            <span>Estimated waiting standby average: 12 minutes per consultation</span>
+            <span>{averageWaitTime !== null ? `Estimated waiting standby average: ${averageWaitTime} minutes per consultation` : 'Queue management system live'}</span>
           </div>
 
           {/* Repeat exact values for flawless loop gap cover */}
