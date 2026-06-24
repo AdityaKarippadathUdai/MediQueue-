@@ -78,8 +78,8 @@ export const ReceptionistLogin: React.FC = () => {
         // Persist local storage as requested
         localStorage.setItem('receptionAccess', 'true');
         
-        // Log in as standard receptionist Sarah to pass Route Protection in receptionist.tsx
-        loginAsReceptionist('sarah_triage', 'Nurse Sarah', 'Triage Desk A');
+        // Log in as standard receptionist  to pass Route Protection in receptionist.tsx
+        loginAsReceptionist('sarah_triage', 'Reception', 'Triage Desk A');
 
         // Redirect after showing success animation
         setTimeout(() => {
