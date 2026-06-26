@@ -151,4 +151,88 @@ export const registerQueueHandlers = (io: Server, socket: Socket): void => {
       });
     }
   });
+
+  /**
+   * completePatient (Client -> Server trigger)
+   * Marks a patient as completed. Receptionists-only operation.
+   */
+  socket.on('completePatient', async (payload: { patientId: string }, callback?: Function) => {
+    try {
+      if (!socket.rooms.has('reception')) {
+        const err: any = new Error('Unauthorized: Only receptionists can complete patients');
+        err.statusCode = 403;
+        throw err;
+      }
+
+      const patient = await queueService.updatePatientStatus(payload.patientId, { status: 'completed' });
+      const ack = { success: true, patient };
+      if (callback) callback(ack);
+      socket.emit('completePatientAck', ack);
+    } catch (err: any) {
+      console.error(`[Socket] completePatient event failed for ${socket.id}:`, err.message);
+      const ack = {
+        success: false,
+        message: err.message || 'Failed to complete patient',
+        statusCode: err.statusCode || 500,
+      };
+      if (callback) callback(ack);
+      socket.emit('completePatientAck', ack);
+    }
+  });
+
+  /**
+   * noShowPatient (Client -> Server trigger)
+   * Marks a patient as no-show. Receptionists-only operation.
+   */
+  socket.on('noShowPatient', async (payload: { patientId: string }, callback?: Function) => {
+    try {
+      if (!socket.rooms.has('reception')) {
+        const err: any = new Error('Unauthorized: Only receptionists can mark no-shows');
+        err.statusCode = 403;
+        throw err;
+      }
+
+      const patient = await queueService.updatePatientStatus(payload.patientId, { status: 'no-show' });
+      const ack = { success: true, patient };
+      if (callback) callback(ack);
+      socket.emit('noShowPatientAck', ack);
+    } catch (err: any) {
+      console.error(`[Socket] noShowPatient event failed for ${socket.id}:`, err.message);
+      const ack = {
+        success: false,
+        message: err.message || 'Failed to mark patient as no-show',
+        statusCode: err.statusCode || 500,
+      };
+      if (callback) callback(ack);
+      socket.emit('noShowPatientAck', ack);
+    }
+  });
+
+  /**
+   * removePatient (Client -> Server trigger)
+   * Removes a patient from the queue. Receptionists-only operation.
+   */
+  socket.on('removePatient', async (payload: { patientId: string }, callback?: Function) => {
+    try {
+      if (!socket.rooms.has('reception')) {
+        const err: any = new Error('Unauthorized: Only receptionists can remove patients');
+        err.statusCode = 403;
+        throw err;
+      }
+
+      await queueService.deletePatient(payload.patientId);
+      const ack = { success: true };
+      if (callback) callback(ack);
+      socket.emit('removePatientAck', ack);
+    } catch (err: any) {
+      console.error(`[Socket] removePatient event failed for ${socket.id}:`, err.message);
+      const ack = {
+        success: false,
+        message: err.message || 'Failed to remove patient',
+        statusCode: err.statusCode || 500,
+      };
+      if (callback) callback(ack);
+      socket.emit('removePatientAck', ack);
+    }
+  });
 };
