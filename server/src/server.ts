@@ -15,13 +15,19 @@ const start = async () => {
     await mongoose.connect(config.mongodbUri);
     console.log('MongoDB connected successfully.');
 
-    server.listen(config.port, () => {
+    server.listen(config.port, config.host, () => {
+      const hostDisplay = config.host === '0.0.0.0' ? 'All Interfaces' : config.host;
+      const localAccess = `http://localhost:${config.port}/api`;
+      const lanAccess = config.host === '0.0.0.0' ? `http://<LAN_IP>:${config.port}/api` : '';
+      
       console.log(`===============================================`);
       console.log(`  Queue Cure Backend Server is running!`);
+      console.log(`  Host    : ${hostDisplay}`);
       console.log(`  Port    : ${config.port}`);
       console.log(`  Env     : ${config.nodeEnv}`);
       console.log(`  DB      : MongoDB`);
-      console.log(`  API     : http://localhost:${config.port}/api`);
+      console.log(`  Local   : ${localAccess}`);
+      if (lanAccess) console.log(`  LAN     : ${lanAccess}`);
       console.log(`===============================================`);
     });
   } catch (err) {
