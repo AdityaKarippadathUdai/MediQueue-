@@ -30,6 +30,8 @@ import {
   LayoutGrid
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { PatientNotFound } from '../components/PatientNotFound';
+import { getPatient } from '../services/api';
 
 export const Patient: React.FC = () => {
   // Support both :tokenId and :token route param variables for absolute safety and backward compatibility
@@ -45,7 +47,8 @@ export const Patient: React.FC = () => {
     waitingCount,
     socketStatus,
     darkMode,
-    joinSocketRoom
+    joinSocketRoom,
+    loading
   } = useQueue();
 
   useEffect(() => {
@@ -113,6 +116,39 @@ export const Patient: React.FC = () => {
 
   const matchedPatient = getMatchedPatient();
 
+  const [isNotFound, setIsNotFound] = useState(false);
+
+  useEffect(() => {
+    if (!activeTokenId) {
+      setIsNotFound(false);
+      return;
+    }
+
+    let mounted = true;
+    const validateToken = async () => {
+      try {
+        await getPatient(activeTokenId);
+        if (mounted) setIsNotFound(false);
+      } catch (err: any) {
+        if (mounted && err.response?.status === 404) {
+          setIsNotFound(true);
+        }
+      }
+    };
+    validateToken();
+    return () => { mounted = false; };
+  }, [activeTokenId]);
+
+  useEffect(() => {
+    if (activeTokenId && !loading && patients.length > 0) {
+      if (!matchedPatient) {
+        setIsNotFound(true);
+      } else {
+        setIsNotFound(false);
+      }
+    }
+  }, [activeTokenId, matchedPatient, loading, patients.length]);
+
   // Save token to history if successfully tracking a token
   useEffect(() => {
     if (activeTokenId) {
@@ -151,11 +187,7 @@ export const Patient: React.FC = () => {
       const cleanNum = parseInt(liveCurrentToken.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10);
       if (!isNaN(cleanNum)) return cleanNum;
     }
-    if (activeTokenId) {
-      const cleanTokenNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10);
-      return Math.max(100, (cleanTokenNum || 104) - 4);
-    }
-    return 100;
+    return 0;
   })();
 
   const currentLivePatientsAhead: number = (() => {
@@ -250,30 +282,22 @@ export const Patient: React.FC = () => {
 
   // Calculations for display times
   const getSimulatedEstimatedCallTime = () => {
-    const now = new Date();
-    if (matchedPatient) {
-      const join = new Date(matchedPatient.joinedAt);
-      join.setMinutes(join.getMinutes() + (matchedPatient.status === 'completed' ? 0 : currentLiveWaitMinutes));
-      return join.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    now.setMinutes(now.getMinutes() + currentLiveWaitMinutes);
-    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (!matchedPatient) return '--:--';
+    const join = new Date(matchedPatient.joinedAt);
+    join.setMinutes(join.getMinutes() + (matchedPatient.status === 'completed' ? 0 : currentLiveWaitMinutes));
+    return join.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const getSimulatedJoinTimeFormatted = () => {
-    if (matchedPatient) {
-      return new Date(matchedPatient.joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - 20);
-    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (!matchedPatient) return '--:--';
+    return new Date(matchedPatient.joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   // Generate the Step Sequence for Queue Progress visualizer e.g., 104 -> 105 -> ... -> 108
   const getProgressSteps = () => {
-    if (!activeTokenId) return [];
+    if (!matchedPatient || !currentLiveServingToken) return [];
     
-    const trackerNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10) || 108;
+    const trackerNum = parseInt(matchedPatient.ticketNumber.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10);
     const startNum = currentLiveServingToken;
 
     if (startNum >= trackerNum) {
@@ -298,18 +322,13 @@ export const Patient: React.FC = () => {
   // Calculate percentage for progress fill
   const calculateProgressPercent = () => {
     if (currentLiveStatus === 'Completed') return 100;
-    if (currentLiveStatus === 'Being Called') return 80;
+    if (currentLiveStatus === 'Being Called') return 90;
+    if (currentLiveStatus === 'Absent/No Show') return 100;
+    if (!matchedPatient) return 0;
     
-    // Waiting: evaluate based on how close simulated current serving is to tracked token
-    if (!activeTokenId) return 20;
-    const trackerNum = parseInt(activeTokenId.replace(/qc-/i, '').replace(/[^0-9]/g, ''), 10) || 108;
-    const startNum = currentLiveServingToken;
-    if (startNum >= trackerNum) return 80;
-
-    const currentDistance = trackerNum - startNum;
-    const initialDistance = Math.max(currentDistance, 6); // normal scale
-    const completedFraction = (initialDistance - currentDistance) / initialDistance;
-    return Math.min(75, Math.max(25, Math.round(completedFraction * 100)));
+    const ahead = currentLivePatientsAhead;
+    if (ahead === 0) return 80;
+    return Math.max(10, Math.min(75, Math.round(80 - (ahead * 15))));
   };
 
   return (
@@ -319,6 +338,24 @@ export const Patient: React.FC = () => {
       <div className="absolute bottom-[40px] left-[-30px] w-48 h-48 rounded-full bg-indigo-500/5 blur-3xl pointer-events-none" />
 
       {activeTokenId ? (
+        isNotFound ? (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key="not-found-panel"
+              initial={{ opacity: 0, scale: 0.98, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+            >
+              <PatientNotFound />
+            </motion.div>
+          </AnimatePresence>
+        ) : !matchedPatient ? (
+          <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh]">
+            <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mb-4" />
+            <p className="text-sm font-bold text-slate-500">Loading tracking details...</p>
+          </div>
+        ) : (
         /* ====================================================================
            ACTIVE TOKEN STANDBY DETAILS SCREEN (The Complete Interactive Suite)
            ==================================================================== */
@@ -509,96 +546,77 @@ export const Patient: React.FC = () => {
                   </span>
 
                   <div className="space-y-3.5 pl-2 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-100 dark:before:bg-slate-800">
-                    
-                    {/* Item 1: Token Generated */}
-                    <div className="flex items-start gap-4 text-left relative">
-                      <div className="w-5.5 h-5.5 rounded-full bg-emerald-500 border border-emerald-500 text-white flex items-center justify-center flex-shrink-0 z-10 shadow-xs">
-                        <Check className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <h5 className="text-[11.5px] font-bold text-slate-800 dark:text-slate-200">
-                          ✓ Token Generated
-                        </h5>
-                        <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
-                          Walk-in checklist verified at {getSimulatedJoinTimeFormatted()}
-                        </p>
-                      </div>
-                    </div>
+                    {matchedPatient && (
+                      (() => {
+                        const status = matchedPatient.status;
+                        const steps = [
+                          {
+                            title: 'Token Generated',
+                            desc: `Walk-in checklist verified at ${getSimulatedJoinTimeFormatted()}`,
+                            done: true,
+                            active: false
+                          },
+                          {
+                            title: 'Waiting In Queue',
+                            desc: 'Priority sorted. Diagnostics pending active standby line.',
+                            done: status !== 'waiting',
+                            active: status === 'waiting'
+                          }
+                        ];
 
-                    {/* Item 2: Waiting In Queue */}
-                    <div className="flex items-start gap-4 text-left relative">
-                      <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
-                        currentLiveStatus === 'Waiting' || currentLiveStatus === 'Being Called' || currentLiveStatus === 'Completed'
-                          ? 'bg-emerald-500 border-emerald-500 text-white'
-                          : 'bg-white border-slate-200 text-slate-450 dark:bg-slate-900 dark:border-slate-800'
-                      }`}>
-                        <Check className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <h5 className="text-[11.5px] font-bold text-slate-800 dark:text-slate-200">
-                          ✓ Waiting In Queue
-                        </h5>
-                        <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
-                          Priority sorted. Diagnostics pending active standby line.
-                        </p>
-                      </div>
-                    </div>
+                        if (status === 'no-show') {
+                          steps.push({
+                            title: 'Absent / No Show',
+                            desc: 'Patient was not present when called.',
+                            done: true,
+                            active: true
+                          });
+                        } else {
+                          steps.push({
+                            title: 'Being Called',
+                            desc: 'Please proceed immediately to Consulting Room.',
+                            done: status === 'completed',
+                            active: status === 'calling' || status === 'active'
+                          });
+                          
+                          if (status === 'completed') {
+                            steps.push({
+                              title: 'Consultation Complete',
+                              desc: 'Medical treatment completed.',
+                              done: true,
+                              active: true
+                            });
+                          }
+                        }
 
-                    {/* Item 3: Being Called */}
-                    <div className="flex items-start gap-4 text-left relative">
-                      <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
-                        currentLiveStatus === 'Being Called' || currentLiveStatus === 'Completed'
-                          ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20'
-                          : 'bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800'
-                      }`}>
-                        {currentLiveStatus === 'Being Called' ? (
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                          </span>
-                        ) : currentLiveStatus === 'Completed' ? (
-                          <Check className="w-3.5 h-3.5" />
-                        ) : (
-                          <span className="text-[8px] font-bold">3</span>
-                        )}
-                      </div>
-                      <div>
-                        <h5 className={`text-[11.5px] font-extrabold ${
-                          currentLiveStatus === 'Being Called' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-800 dark:text-slate-200'
-                        }`}>
-                          {currentLiveStatus === 'Being Called' ? '🛎️ Being Called Now' : '○ Being Called'}
-                        </h5>
-                        <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
-                          {currentLiveStatus === 'Being Called' 
-                            ? 'Please proceed immediately to Consulting Room B.' 
-                            : 'Patient called by clinician for face-to-face diagnosis.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Item 4: Consultation Complete */}
-                    <div className="flex items-start gap-4 text-left relative">
-                      <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
-                        currentLiveStatus === 'Completed'
-                          ? 'bg-emerald-500 border-emerald-500 text-white'
-                          : 'bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800'
-                      }`}>
-                        {currentLiveStatus === 'Completed' ? (
-                          <Check className="w-3.5 h-3.5" />
-                        ) : (
-                          <span className="text-[8px] font-bold">4</span>
-                        )}
-                      </div>
-                      <div>
-                        <h5 className="text-[11.5px] font-bold text-slate-800 dark:text-slate-200">
-                          ○ Consultation Complete
-                        </h5>
-                        <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
-                          Medical treatment completed, prescription generated.
-                        </p>
-                      </div>
-                    </div>
-
+                        return steps.map((step, idx) => (
+                          <div key={idx} className="flex items-start gap-4 text-left relative">
+                            <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 border transition-all ${
+                              step.done || step.active
+                                ? 'bg-emerald-500 border-emerald-500 text-white'
+                                : 'bg-white border-slate-200 text-slate-450 dark:bg-slate-900 dark:border-slate-800'
+                            }`}>
+                              {step.done ? <Check className="w-3.5 h-3.5" /> : (
+                                step.active ? (
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                                  </span>
+                                ) : <span className="text-[8px] font-bold">{idx + 1}</span>
+                              )}
+                            </div>
+                            <div>
+                              <h5 className={`text-[11.5px] ${step.active ? 'font-extrabold text-blue-600 dark:text-blue-400' : 'font-bold text-slate-800 dark:text-slate-200'}`}>
+                                {step.done ? '✓ ' : (step.active ? '○ ' : '')}{step.title}
+                              </h5>
+                              <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
+                                {step.desc}
+                              </p>
+                            </div>
+                          </div>
+                        ));
+                      })()
+                    )}
                   </div>
                 </div>
 
@@ -685,12 +703,12 @@ export const Patient: React.FC = () => {
               </div>
             )}
 
-            {/* Spacer branding footer */}
             <div className="text-center pt-3 select-none font-mono text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               Queue Cure '26 • Real-time Terminal
             </div>
           </motion.div>
         </AnimatePresence>
+        )
       ) : (
         /* ====================================================================
            PORTAL VIEW (Home tracking landing console)
