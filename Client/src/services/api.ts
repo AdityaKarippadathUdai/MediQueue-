@@ -12,6 +12,16 @@ export const api = axios.create({
   timeout: 10000, // 10 second timeout
 });
 
+api.interceptors.request.use((config) => {
+  const pin = localStorage.getItem("reception_pin");
+
+  if (pin) {
+    config.headers["x-access-pin"] = pin;
+  }
+
+  return config;
+});
+
 // Interfaces representing the shapes returned from the backend
 export interface ApiPatientResponse {
   _id: string;
