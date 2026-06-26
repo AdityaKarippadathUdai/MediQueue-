@@ -401,15 +401,32 @@ export const QueueProvider: React.FC<{children: React.ReactNode}> = ({children})
     setLoading(true);
     setError(null);
     try {
-      const apiPt = await apiService.updatePatientStatus(id, {status: 'completed'});
-      mergePatient(apiPt);
-      showToast('Patient session completed successfully.', 'success');
+      if (!socket) {
+        throw new Error('Socket.IO connection not established');
+      }
+      
+      return new Promise((resolve, reject) => {
+        socket.emit('completePatient', { patientId: id }, (response: any) => {
+          if (response?.success) {
+            mergePatient(response.patient);
+            showToast('Patient session completed successfully.', 'success');
+            setLoading(false);
+            resolve();
+          } else {
+            const msg = response?.message || 'Error marking patient session complete.';
+            setError(msg);
+            showToast(msg, 'error');
+            setLoading(false);
+            reject(new Error(msg));
+          }
+        });
+      });
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Error marking patient session complete.';
+      const msg = err.message || 'Error marking patient session complete.';
       setError(msg);
       showToast(msg, 'error');
-    } finally {
       setLoading(false);
+      throw err;
     }
   };
 
@@ -417,15 +434,32 @@ export const QueueProvider: React.FC<{children: React.ReactNode}> = ({children})
     setLoading(true);
     setError(null);
     try {
-      const apiPt = await apiService.updatePatientStatus(id, {status: 'no-show'});
-      mergePatient(apiPt);
-      showToast('Patient marked as absent/no-show.', 'success');
+      if (!socket) {
+        throw new Error('Socket.IO connection not established');
+      }
+      
+      return new Promise((resolve, reject) => {
+        socket.emit('noShowPatient', { patientId: id }, (response: any) => {
+          if (response?.success) {
+            mergePatient(response.patient);
+            showToast('Patient marked as absent/no-show.', 'success');
+            setLoading(false);
+            resolve();
+          } else {
+            const msg = response?.message || 'Error marking no-show status.';
+            setError(msg);
+            showToast(msg, 'error');
+            setLoading(false);
+            reject(new Error(msg));
+          }
+        });
+      });
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Error marking no-show status.';
+      const msg = err.message || 'Error marking no-show status.';
       setError(msg);
       showToast(msg, 'error');
-    } finally {
       setLoading(false);
+      throw err;
     }
   };
 
@@ -433,19 +467,36 @@ export const QueueProvider: React.FC<{children: React.ReactNode}> = ({children})
     setLoading(true);
     setError(null);
     try {
-      await apiService.deletePatient(id);
-      setPatients((previousPatients) => {
-        const nextPatients = previousPatients.filter((patient) => patient.id !== id);
-        deriveQueueStats(nextPatients);
-        return nextPatients;
+      if (!socket) {
+        throw new Error('Socket.IO connection not established');
+      }
+      
+      return new Promise((resolve, reject) => {
+        socket.emit('removePatient', { patientId: id }, (response: any) => {
+          if (response?.success) {
+            setPatients((previousPatients) => {
+              const nextPatients = previousPatients.filter((patient) => patient.id !== id);
+              deriveQueueStats(nextPatients);
+              return nextPatients;
+            });
+            showToast('Patient registration cancelled successfully.', 'success');
+            setLoading(false);
+            resolve();
+          } else {
+            const msg = response?.message || 'Error removing patient from list.';
+            setError(msg);
+            showToast(msg, 'error');
+            setLoading(false);
+            reject(new Error(msg));
+          }
+        });
       });
-      showToast('Patient registration cancelled successfully.', 'success');
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Error removing patient from list.';
+      const msg = err.message || 'Error removing patient from list.';
       setError(msg);
       showToast(msg, 'error');
-    } finally {
       setLoading(false);
+      throw err;
     }
   };
 
