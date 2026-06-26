@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueue } from '../context/QueueContext';
-import { 
-  ShieldCheck, 
-  Lock, 
-  Unlock, 
-  Eye, 
-  EyeOff, 
-  AlertCircle, 
-  Check, 
-  Heart, 
+import {
+  ShieldCheck,
+  Lock,
+  Unlock,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Check,
+  Heart,
   KeyRound,
   LayoutGrid
 } from 'lucide-react';
@@ -77,7 +77,8 @@ export const ReceptionistLogin: React.FC = () => {
         setStatus('success');
         // Persist local storage as requested
         localStorage.setItem('receptionAccess', 'true');
-        
+        localStorage.setItem('reception_pin', pin);
+
         // Log in as standard receptionist  to pass Route Protection in receptionist.tsx
         loginAsReceptionist('sarah_triage', 'Reception', 'Triage Desk A');
 
@@ -140,11 +141,10 @@ export const ReceptionistLogin: React.FC = () => {
         className="flex-1 flex flex-col justify-center max-w-[380px] mx-auto w-full z-10"
       >
         {/* Main Lock Card */}
-        <div className={`p-5 rounded-3xl border transition-all duration-300 ${
-          darkMode 
-            ? 'bg-slate-900 border-slate-800 shadow-xl' 
+        <div className={`p-5 rounded-3xl border transition-all duration-300 ${darkMode
+            ? 'bg-slate-900 border-slate-800 shadow-xl'
             : 'bg-white border-slate-100 shadow-md shadow-slate-100/70'
-        }`}>
+          }`}>
           {/* Header Layout requested */}
           <div className="flex flex-col items-center text-center">
             <div className="inline-flex items-center gap-1 text-slate-450 dark:text-slate-500 text-[11px] font-bold tracking-tight mb-2.5">
@@ -155,17 +155,16 @@ export const ReceptionistLogin: React.FC = () => {
             </div>
 
             {/* Custom Icon status animates */}
-            <motion.div 
-              animate={{ 
+            <motion.div
+              animate={{
                 scale: status === 'success' ? [1, 1.15, 1] : 1,
               }}
-              className={`p-3.5 rounded-2xl mb-3 flex items-center justify-center transition-all duration-300 ${
-                status === 'success'
+              className={`p-3.5 rounded-2xl mb-3 flex items-center justify-center transition-all duration-300 ${status === 'success'
                   ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
                   : status === 'error'
                     ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400'
                     : 'bg-blue-50/80 dark:bg-slate-800 text-blue-600 dark:text-blue-400'
-              }`}
+                }`}
             >
               {status === 'success' ? (
                 <Unlock className="w-6.5 h-6.5" />
@@ -185,7 +184,7 @@ export const ReceptionistLogin: React.FC = () => {
 
           {/* Form and Input Area */}
           <form onSubmit={handleVerify} className="mt-5 space-y-4">
-            
+
             {/* PIN Input with Show / Hide Toggle */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center px-1">
@@ -202,17 +201,16 @@ export const ReceptionistLogin: React.FC = () => {
                   readOnly
                   maxLength={4}
                   placeholder="••••"
-                  className={`w-full pl-10 pr-12 py-3 rounded-2xl text-center text-lg select-all font-mono tracking-[0.4em] border focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 transition-all ${
-                    status === 'error'
+                  className={`w-full pl-10 pr-12 py-3 rounded-2xl text-center text-lg select-all font-mono tracking-[0.4em] border focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 transition-all ${status === 'error'
                       ? 'border-rose-450 bg-rose-50/10 dark:bg-rose-950/10 text-rose-600'
                       : status === 'success'
                         ? 'border-emerald-450 bg-emerald-50/10 dark:bg-emerald-950/10 text-emerald-600 font-bold'
-                        : darkMode 
-                          ? 'bg-slate-955 border-slate-800 text-white focus:border-blue-500' 
+                        : darkMode
+                          ? 'bg-slate-955 border-slate-800 text-white focus:border-blue-500'
                           : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-blue-500'
-                  }`}
+                    }`}
                 />
-                
+
                 {/* Show/Hide PIN toggle requested */}
                 <button
                   type="button"
@@ -267,13 +265,12 @@ export const ReceptionistLogin: React.FC = () => {
               whileTap={{ scale: 0.99 }}
               type="submit"
               disabled={status === 'verifying' || status === 'success'}
-              className={`w-full py-3.5 rounded-2xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                status === 'success'
+              className={`w-full py-3.5 rounded-2xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${status === 'success'
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
                   : status === 'verifying'
                     ? 'bg-slate-300 dark:bg-slate-850 text-slate-500 cursor-not-allowed shadow-none'
                     : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 dark:bg-blue-500 dark:hover:bg-blue-600'
-              }`}
+                }`}
             >
               {status === 'verifying' ? (
                 <div className="flex items-center gap-2">
@@ -299,11 +296,10 @@ export const ReceptionistLogin: React.FC = () => {
                   key={digit}
                   type="button"
                   onClick={() => handleDigitClick(digit)}
-                  className={`py-3 rounded-xl font-sans font-bold text-base transition-colors cursor-pointer select-none ${
-                    darkMode
+                  className={`py-3 rounded-xl font-sans font-bold text-base transition-colors cursor-pointer select-none ${darkMode
                       ? 'bg-slate-950 hover:bg-slate-850 text-white border border-slate-850'
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-750'
-                  }`}
+                    }`}
                 >
                   {digit}
                 </button>
@@ -311,33 +307,30 @@ export const ReceptionistLogin: React.FC = () => {
               <button
                 type="button"
                 onClick={handleClear}
-                className={`py-3 rounded-xl font-semibold text-xs tracking-wide transition-colors cursor-pointer select-none ${
-                  darkMode
+                className={`py-3 rounded-xl font-semibold text-xs tracking-wide transition-colors cursor-pointer select-none ${darkMode
                     ? 'bg-slate-955 hover:bg-slate-850 text-slate-400'
                     : 'bg-slate-100/50 hover:bg-slate-100 text-slate-500'
-                }`}
+                  }`}
               >
                 CLEAR
               </button>
               <button
                 type="button"
                 onClick={() => handleDigitClick('0')}
-                className={`py-3 rounded-xl font-sans font-bold text-base transition-colors cursor-pointer select-none ${
-                  darkMode
+                className={`py-3 rounded-xl font-sans font-bold text-base transition-colors cursor-pointer select-none ${darkMode
                     ? 'bg-slate-950 hover:bg-slate-850 text-white border border-slate-850'
                     : 'bg-slate-50 hover:bg-slate-100 text-slate-750'
-                }`}
+                  }`}
               >
                 0
               </button>
               <button
                 type="button"
                 onClick={handleBackspace}
-                className={`py-3 rounded-xl font-semibold text-xs tracking-wide transition-colors cursor-pointer select-none ${
-                  darkMode
+                className={`py-3 rounded-xl font-semibold text-xs tracking-wide transition-colors cursor-pointer select-none ${darkMode
                     ? 'bg-slate-955 hover:bg-slate-850 text-slate-400'
                     : 'bg-slate-100/50 hover:bg-slate-100 text-slate-500'
-                }`}
+                  }`}
                 title="Backspace"
               >
                 ⌫
