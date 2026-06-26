@@ -77,6 +77,14 @@ export async function getPatients(): Promise<ApiPatientResponse[]> {
 }
 
 /**
+ * 2b. getPatient - GET /api/patients/:token
+ */
+export async function getPatient(tokenOrId: string): Promise<ApiPatientResponse> {
+  const response = await api.get<ApiPatientResponse | ApiEnvelope<ApiPatientResponse>>(`/api/patients/${tokenOrId}`);
+  return unwrap(response.data);
+}
+
+/**
  * 3. callNextPatient - POST /api/queue/next
  */
 export async function callNextPatient(room?: string): Promise<ApiPatientResponse> {
