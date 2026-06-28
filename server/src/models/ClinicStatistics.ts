@@ -1,10 +1,12 @@
-import { Schema, model, Document, Model } from 'mongoose';
+import { Schema, model, Model, HydratedDocument } from 'mongoose';
 
 // ─────────────────────────────────────────────
 // TypeScript Interface
 // ─────────────────────────────────────────────
 
-export interface IClinicStatistics extends Document {
+export type ClinicStatisticsDocument = HydratedDocument<IClinicStatistics>;
+
+export interface IClinicStatistics {
   // Singleton key — one stats document per department per day
   departmentCode: string;
   date: string; // Format: YYYY-MM-DD
@@ -106,7 +108,7 @@ ClinicStatisticsSchema.index({ departmentCode: 1, date: -1 });
 ClinicStatisticsSchema.statics.getOrInitializeForToday = async function (
   departmentCode: string = 'GEN',
   today: string
-): Promise<IClinicStatistics> {
+): Promise<ClinicStatisticsDocument> {
   const stats = await this.findOneAndUpdate(
     { date: today, departmentCode },
     { $setOnInsert: { date: today, departmentCode, lastResetDate: today } },
@@ -115,12 +117,11 @@ ClinicStatisticsSchema.statics.getOrInitializeForToday = async function (
   return stats;
 };
 
-// Recalculate rolling average consultation time after a new completion
 ClinicStatisticsSchema.statics.recordCompletion = async function (
   departmentCode: string,
   today: string,
   consultationMinutes: number
-): Promise<IClinicStatistics> {
+): Promise<ClinicStatisticsDocument> {
   const stats = await this.findOneAndUpdate(
     { date: today, departmentCode },
     {
@@ -146,12 +147,12 @@ ClinicStatisticsSchema.statics.recordCompletion = async function (
 // ─────────────────────────────────────────────
 
 export interface ClinicStatisticsModel extends Model<IClinicStatistics> {
-  getOrInitializeForToday(departmentCode?: string, today?: string): Promise<IClinicStatistics>;
+  getOrInitializeForToday(departmentCode?: string, today?: string): Promise<ClinicStatisticsDocument>;
   recordCompletion(
     departmentCode: string,
     today: string,
     consultationMinutes: number
-  ): Promise<IClinicStatistics>;
+  ): Promise<ClinicStatisticsDocument>;
 }
 
 export const ClinicStatistics = model<IClinicStatistics>(

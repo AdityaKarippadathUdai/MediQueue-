@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Types, HydratedDocument } from 'mongoose';
 
 // ─────────────────────────────────────────────
 // TypeScript Interfaces
@@ -7,7 +7,9 @@ import { Schema, model, Document, Types } from 'mongoose';
 export type PatientStatus = 'waiting' | 'active' | 'completed' | 'no-show';
 export type PatientPriority = 'normal' | 'urgent';
 
-export interface IPatient extends Document {
+export type PatientDocument = HydratedDocument<IPatient>;
+
+export interface IPatient {
   _id: Types.ObjectId;
 
   // Core identity

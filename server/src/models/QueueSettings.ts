@@ -1,10 +1,12 @@
-import { Schema, model, Document, Model } from 'mongoose';
+import { Schema, model, Model, HydratedDocument } from 'mongoose';
 
 // ─────────────────────────────────────────────
 // TypeScript Interface
 // ─────────────────────────────────────────────
 
-export interface IQueueSettings extends Document {
+export type QueueSettingsDocument = HydratedDocument<IQueueSettings>;
+
+export interface IQueueSettings {
   // Singleton identifier — only one settings document exists per department
   departmentCode: string;
 
@@ -86,7 +88,7 @@ const QueueSettingsSchema = new Schema<IQueueSettings>(
 QueueSettingsSchema.statics.getOrInitialize = async function (
   departmentCode: string = 'GEN',
   today: string
-): Promise<IQueueSettings> {
+): Promise<QueueSettingsDocument> {
   let settings = await this.findOneAndUpdate(
     { departmentCode },
     {
@@ -131,7 +133,7 @@ QueueSettingsSchema.statics.getOrInitialize = async function (
 // ─────────────────────────────────────────────
 
 export interface QueueSettingsModel extends Model<IQueueSettings> {
-  getOrInitialize(departmentCode?: string, today?: string): Promise<IQueueSettings>;
+  getOrInitialize(departmentCode?: string, today?: string): Promise<QueueSettingsDocument>;
 }
 
 export const QueueSettings = model<IQueueSettings>(
