@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueue } from '../context/QueueContext';
 import { Patient, PriorityLevel } from '../types';
-import { 
-  Users, UserPlus, Volume2, CheckCircle2, UserX, AlertCircle, 
-  Trash2, Plus, ArrowRight, UserCheck, ShieldAlert, Sparkles, Clock, BarChart2, 
-  Copy, Share2, Printer, Download, QrCode, Check, Smartphone, ExternalLink, Link, 
+import {
+  Users, UserPlus, Volume2, CheckCircle2, UserX, AlertCircle,
+  Trash2, Plus, ArrowRight, UserCheck, ShieldAlert, Sparkles, Clock, BarChart2,
+  Copy, Share2, Printer, Download, QrCode, Check, Smartphone, ExternalLink, Link,
   ArrowLeft, ClipboardCheck, Sliders, Settings, RotateCw, Play, VolumeX, Eye, Monitor,
   Activity, Bell, ChevronRight, Calendar, Info
 } from 'lucide-react';
@@ -38,8 +38,8 @@ const ValueMotion: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 export const Receptionist: React.FC = () => {
   const navigate = useNavigate();
-  const { 
-    patients, receptionist, logoutReceptionist, addPatient, 
+  const {
+    patients, receptionist, logoutReceptionist, addPatient,
     callPatient, callNextPatient, completePatient, noShowPatient, removePatient, darkMode,
     averageWaitTime, updateAverageConsultationTime, currentToken, waitingCount, completedCount,
     joinSocketRoom
@@ -79,11 +79,11 @@ export const Receptionist: React.FC = () => {
 
   // Local state for Recent Activities Log
   const [activities, setActivities] = useState<ActivityLog[]>([
-    { 
-      id: 'act-1', 
-      text: 'Reception desk opened and ready to receive walk-ins', 
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
-      type: 'system' 
+    {
+      id: 'act-1',
+      text: 'Reception desk opened and ready to receive walk-ins',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'system'
     }
   ]);
 
@@ -126,7 +126,7 @@ export const Receptionist: React.FC = () => {
 
   const handleAddPatientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Explicit Validation Check 
     if (!newPatientName.trim()) {
       setFormError('Patient Name is required for queue entry.');
@@ -136,11 +136,11 @@ export const Receptionist: React.FC = () => {
 
     setFormError('');
     const priorityCode: PriorityLevel = isUrgent ? 'urgent' : 'normal';
-    
+
     try {
       // Call Context action to add persistent local patient
       const registered = await addPatient(newPatientName, visitPurpose, priorityCode);
-      
+
       // Trigger Success feedback
       setSuccessTicket(registered.ticketNumber);
       setSuccessMessage(`Patient "${newPatientName}" registered successfully!`);
@@ -343,7 +343,7 @@ export const Receptionist: React.FC = () => {
       patients.forEach(p => {
         try {
           removePatient(p.id);
-        } catch(e) {}
+        } catch (e) { }
       });
       logActivity('Cleared all patient logs and flushed live dashboard queues', 'system');
       alert("Standby queue elements cleared!");
@@ -380,10 +380,9 @@ export const Receptionist: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen w-full flex flex-col transition-colors duration-300 font-sans select-none ${
-      darkMode ? 'bg-slate-950 text-slate-100' : 'bg-[#F8FAFC] text-slate-800'
-    }`}>
-      
+    <div className={`min-h-screen w-full flex flex-col transition-colors duration-300 font-sans select-none ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-[#F8FAFC] text-slate-800'
+      }`}>
+
       {/* 
         ========================================================================
         Dashboard Central Area (Responsive Desktop Framework)
@@ -391,17 +390,16 @@ export const Receptionist: React.FC = () => {
         ========================================================================
       */}
       <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col gap-6">
-        
+
         {/* 
           ----------------------------------------------------------------------
           HEADER COMPONENT
           ----------------------------------------------------------------------
         */}
-        <header className={`p-4 md:p-5 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-4 text-left ${
-          darkMode 
-            ? 'bg-slate-900/60 border-slate-800/80 backdrop-blur-md' 
+        <header className={`p-4 md:p-5 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-4 text-left ${darkMode
+            ? 'bg-slate-900/60 border-slate-800/80 backdrop-blur-md'
             : 'bg-white border-slate-200/60 shadow-sm backdrop-blur-md'
-        }`}>
+          }`}>
           {/* Operator Identity */}
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-650 text-white flex items-center justify-center font-black text-lg shadow-lg shadow-blue-500/10">
@@ -440,13 +438,12 @@ export const Receptionist: React.FC = () => {
             </div>
 
             {/* Wait Display Navigation link */}
-            <button 
+            <button
               onClick={() => navigate('/display')}
-              className={`px-4 py-2.5 rounded-2xl border flex items-center gap-2 text-xs uppercase font-black tracking-wider transition-all cursor-pointer ${
-                darkMode 
-                  ? 'border-slate-800 bg-slate-950 text-slate-300 hover:bg-slate-905 hover:text-white shadow-inner' 
+              className={`px-4 py-2.5 rounded-2xl border flex items-center gap-2 text-xs uppercase font-black tracking-wider transition-all cursor-pointer ${darkMode
+                  ? 'border-slate-800 bg-slate-950 text-slate-300 hover:bg-slate-905 hover:text-white shadow-inner'
                   : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 shadow-xs'
-              }`}
+                }`}
               title="Launch TV Lounge display channel"
             >
               <Monitor className="w-4 h-4 text-indigo-500" />
@@ -454,7 +451,7 @@ export const Receptionist: React.FC = () => {
             </button>
 
             {/* Logout operator button */}
-            <button 
+            <button
               onClick={() => {
                 logoutReceptionist();
                 navigate('/');
@@ -475,15 +472,14 @@ export const Receptionist: React.FC = () => {
           ----------------------------------------------------------------------
         */}
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="receptionist-statistics-layer">
-          
+
           {/* Metric 1: CURRENT TOKEN CARD */}
-          <motion.div 
+          <motion.div
             whileHover={{ y: -3 }}
-            className={`p-5 rounded-3xl border transition-all text-left relative overflow-hidden flex flex-col justify-between h-[155px] ${
-              callingPatients.length > 0 
+            className={`p-5 rounded-3xl border transition-all text-left relative overflow-hidden flex flex-col justify-between h-[155px] ${callingPatients.length > 0
                 ? 'border-blue-500/30 bg-gradient-to-br from-blue-500/10 via-indigo-500/5 to-blue-500/10'
                 : darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
-            }`}
+              }`}
           >
             <div className="flex justify-between items-start">
               <span className="text-[10px] font-black text-blue-550 dark:text-blue-400 uppercase tracking-widest">
@@ -505,11 +501,10 @@ export const Receptionist: React.FC = () => {
           </motion.div>
 
           {/* Metric 2: STANDBY WAITING COUNT */}
-          <motion.div 
+          <motion.div
             whileHover={{ y: -3 }}
-            className={`p-5 rounded-3xl border text-left flex flex-col justify-between h-[155px] ${
-              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
-            }`}
+            className={`p-5 rounded-3xl border text-left flex flex-col justify-between h-[155px] ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
+              }`}
           >
             <div className="flex justify-between items-start">
               <span className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">
@@ -530,11 +525,10 @@ export const Receptionist: React.FC = () => {
           </motion.div>
 
           {/* Metric 3: COMPLETED COUNT */}
-          <motion.div 
+          <motion.div
             whileHover={{ y: -3 }}
-            className={`p-5 rounded-3xl border text-left flex flex-col justify-between h-[155px] ${
-              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
-            }`}
+            className={`p-5 rounded-3xl border text-left flex flex-col justify-between h-[155px] ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
+              }`}
           >
             <div className="flex justify-between items-start">
               <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">
@@ -555,11 +549,10 @@ export const Receptionist: React.FC = () => {
           </motion.div>
 
           {/* Metric 4: AVERAGE TIME CARD WITH CONTROLS */}
-          <motion.div 
+          <motion.div
             whileHover={{ y: -3 }}
-            className={`p-5 rounded-3xl border text-left flex flex-col justify-between h-[155px] relative ${
-              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
-            }`}
+            className={`p-5 rounded-3xl border text-left flex flex-col justify-between h-[155px] relative ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/50 shadow-sm'
+              }`}
           >
             <div className="flex justify-between items-start">
               <div>
@@ -577,7 +570,7 @@ export const Receptionist: React.FC = () => {
               <span className="text-2xl md:text-3.5xl font-black font-sans text-slate-900 dark:text-white">
                 <ValueMotion>{averageWaitTime}</ValueMotion> <span className="text-xs font-semibold text-slate-400">mins</span>
               </span>
-              
+
               {/* Inline instant adjust controls */}
               <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200/60 dark:border-slate-800">
                 <button
@@ -614,14 +607,13 @@ export const Receptionist: React.FC = () => {
           ----------------------------------------------------------------------
         */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          
+
           {/* AddPatientCard (Walk-in Intake Form) - Spans 8 Columns */}
           <div className="lg:col-span-8">
             <motion.div
               layout="position"
-              className={`p-5 rounded-3xl border h-full flex flex-col justify-between transition-all ${
-                darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-              }`}
+              className={`p-5 rounded-3xl border h-full flex flex-col justify-between transition-all ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+                }`}
             >
               <div>
                 <div className="flex justify-between items-center pb-2.5 border-b border-slate-150 dark:border-slate-800">
@@ -635,7 +627,7 @@ export const Receptionist: React.FC = () => {
                   {/* Validation indicators */}
                   <AnimatePresence>
                     {formError && (
-                      <motion.div 
+                      <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
@@ -647,7 +639,7 @@ export const Receptionist: React.FC = () => {
                     )}
 
                     {successMessage && (
-                      <motion.div 
+                      <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
@@ -670,20 +662,19 @@ export const Receptionist: React.FC = () => {
                     <div className="flex-1 relative">
                       <input
                         type="text"
-                        placeholder="Type patient legal name (e.g. Maya Sen)..."
+                        placeholder="Type patient legal name..."
                         value={newPatientName}
                         onChange={(e) => {
                           setNewPatientName(e.target.value);
                           if (e.target.value.trim()) setFormError('');
                         }}
-                        className={`w-full px-4.5 py-3 text-xs md:text-sm rounded-2xl border focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all ${
-                          darkMode 
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-blue-500' 
+                        className={`w-full px-4.5 py-3 text-xs md:text-sm rounded-2xl border focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all ${darkMode
+                            ? 'bg-slate-950 border-slate-800 text-white focus:border-blue-500'
                             : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-blue-500'
-                        }`}
+                          }`}
                       />
                     </div>
-                    
+
                     <motion.button
                       whileTap={{ scale: 0.96 }}
                       type="submit"
@@ -702,9 +693,8 @@ export const Receptionist: React.FC = () => {
                       <select
                         value={visitPurpose}
                         onChange={(e) => setVisitPurpose(e.target.value)}
-                        className={`px-4 py-2.5 rounded-xl text-xs font-semibold border focus:outline-hidden cursor-pointer ${
-                          darkMode ? 'bg-slate-950 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'
-                        }`}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-semibold border focus:outline-hidden cursor-pointer ${darkMode ? 'bg-slate-950 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'
+                          }`}
                       >
                         <option value="General Consultation">🩺 General Consultation </option>
                         <option value="Acute Pain Triage">🚨 Acute Localized Pain </option>
@@ -715,13 +705,12 @@ export const Receptionist: React.FC = () => {
                     </div>
 
                     <div className="flex items-center">
-                      <label className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border cursor-pointer select-none transition-all ${
-                        isUrgent 
-                          ? 'bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400' 
-                          : darkMode 
-                            ? 'border-slate-800 hover:bg-slate-950' 
+                      <label className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border cursor-pointer select-none transition-all ${isUrgent
+                          ? 'bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400'
+                          : darkMode
+                            ? 'border-slate-800 hover:bg-slate-950'
                             : 'border-slate-200 hover:bg-slate-50'
-                      }`}>
+                        }`}>
                         <input
                           type="checkbox"
                           checked={isUrgent}
@@ -746,9 +735,8 @@ export const Receptionist: React.FC = () => {
 
           {/* QuickActionsCard (Desk Command Center) - Spans 4 Columns */}
           <div className="lg:col-span-4">
-            <div className={`p-5 rounded-3xl border h-full flex flex-col justify-between text-left ${
-              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-202 shadow-sm'
-            }`} id="QuickActionsCard">
+            <div className={`p-5 rounded-3xl border h-full flex flex-col justify-between text-left ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-202 shadow-sm'
+              }`} id="QuickActionsCard">
               <div>
                 <h4 className="text-xs font-black text-slate-400 dark:text-slate-550 uppercase tracking-widest mb-3.5 flex items-center gap-2 pb-2 border-b border-slate-150 dark:border-slate-800">
                   <Sliders className="w-4 h-4 text-indigo-500" />
@@ -760,9 +748,8 @@ export const Receptionist: React.FC = () => {
                   <button
                     onClick={handleCallNextTicket}
                     disabled={waitingCount === 0}
-                    className={`w-full py-3.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-blue-500/10 ${
-                      waitingCount === 0 ? 'opacity-40 saturate-50 cursor-not-allowed' : ''
-                    }`}
+                    className={`w-full py-3.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-blue-500/10 ${waitingCount === 0 ? 'opacity-40 saturate-50 cursor-not-allowed' : ''
+                      }`}
                   >
                     <Volume2 className="w-4 h-4 animate-bounce" />
                     <span>Call Next Standsby patient</span>
@@ -772,13 +759,12 @@ export const Receptionist: React.FC = () => {
                   <button
                     onClick={triggerVoiceDeclaration}
                     disabled={!activeServingPatient}
-                    className={`w-full py-2.5 px-4 rounded-xl border text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-                      !activeServingPatient 
-                        ? 'opacity-40 cursor-not-allowed border-slate-200 dark:border-slate-800 text-slate-400' 
-                        : darkMode 
-                          ? 'border-indigo-500/30 text-indigo-400 bg-indigo-500/5 hover:bg-indigo-500/10' 
+                    className={`w-full py-2.5 px-4 rounded-xl border text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors ${!activeServingPatient
+                        ? 'opacity-40 cursor-not-allowed border-slate-200 dark:border-slate-800 text-slate-400'
+                        : darkMode
+                          ? 'border-indigo-500/30 text-indigo-400 bg-indigo-500/5 hover:bg-indigo-500/10'
                           : 'border-blue-100 text-blue-600 bg-blue-50/40 hover:bg-blue-105/50'
-                    }`}
+                      }`}
                   >
                     <VolumeX className="w-4 h-4 flex-shrink-0" />
                     <span>Announce Serving Ticket Again</span>
@@ -791,9 +777,8 @@ export const Receptionist: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleResetEntireQueue}
-                  className={`w-full py-2 px-3 rounded-xl border border-dashed text-[10px] font-extrabold uppercase tracking-widest text-center text-rose-500 flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
-                    darkMode ? 'border-slate-800 hover:bg-rose-950/20' : 'border-rose-100 hover:bg-rose-500/10'
-                  }`}
+                  className={`w-full py-2 px-3 rounded-xl border border-dashed text-[10px] font-extrabold uppercase tracking-widest text-center text-rose-500 flex items-center justify-center gap-1.5 cursor-pointer transition-all ${darkMode ? 'border-slate-800 hover:bg-rose-950/20' : 'border-rose-100 hover:bg-rose-500/10'
+                    }`}
                   title="Purge standby roster"
                 >
                   <RotateCw className="w-3.5 h-3.5" />
@@ -815,11 +800,11 @@ export const Receptionist: React.FC = () => {
           ----------------------------------------------------------------------
         */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          
+
           {/* Main Waiting Standby Pipeline (QueueTable) - Spans 8 Columns */}
           <div className="lg:col-span-8 flex flex-col justify-between" id="receptionist-queue-list-container">
             <div className="space-y-3 h-full flex flex-col">
-              
+
               <div className="flex justify-between items-center px-1">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
@@ -833,9 +818,8 @@ export const Receptionist: React.FC = () => {
               </div>
 
               {/* Roster table block */}
-              <div className={`p-4 rounded-3xl border flex-1 flex flex-col min-h-[360px] justify-between ${
-                darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-              }`}>
+              <div className={`p-4 rounded-3xl border flex-1 flex flex-col min-h-[360px] justify-between ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+                }`}>
                 {patients.length === 0 ? (
                   <div className="my-auto py-12 text-center text-slate-405">
                     <Sparkles className="w-12 h-12 mx-auto mb-3 text-slate-300 animate-pulse" />
@@ -846,7 +830,7 @@ export const Receptionist: React.FC = () => {
                   </div>
                 ) : (
                   <div className="flex-1">
-                    
+
                     {/* DESKTOP TABLE PATTERN - Grid format inside table */}
                     <div className="hidden md:block overflow-x-auto">
                       <table className="w-full text-left text-xs border-collapse">
@@ -863,7 +847,7 @@ export const Receptionist: React.FC = () => {
                         <tbody>
                           <AnimatePresence initial={false}>
                             {patients.map((pt) => {
-                              const statusColor = pt.status === 'calling' 
+                              const statusColor = pt.status === 'calling'
                                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border-blue-200'
                                 : pt.status === 'completed'
                                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
@@ -877,19 +861,18 @@ export const Receptionist: React.FC = () => {
                                 <motion.tr
                                   key={pt.id}
                                   initial={{ opacity: 0, y: 12 }}
-                                  animate={{ 
-                                    opacity: 1, 
+                                  animate={{
+                                    opacity: 1,
                                     y: 0,
-                                    backgroundColor: highlightedId === pt.id 
+                                    backgroundColor: highlightedId === pt.id
                                       ? (darkMode ? 'rgba(37, 99, 235, 0.12)' : 'rgba(219, 234, 254, 0.35)')
                                       : 'transparent'
                                   }}
                                   exit={{ opacity: 0, x: -15 }}
-                                  className={`border-b border-slate-105/60 dark:border-slate-800/60 hover:bg-slate-100/30 dark:hover:bg-slate-900/30 transition-colors ${
-                                    pt.priority === 'urgent' && pt.status === 'waiting'
+                                  className={`border-b border-slate-105/60 dark:border-slate-800/60 hover:bg-slate-100/30 dark:hover:bg-slate-900/30 transition-colors ${pt.priority === 'urgent' && pt.status === 'waiting'
                                       ? 'bg-rose-500/5 dark:bg-rose-950/10'
                                       : ''
-                                  }`}
+                                    }`}
                                 >
                                   {/* Token */}
                                   <td className="py-3.5 pl-2.5 font-mono font-black text-slate-900 dark:text-white">
@@ -996,7 +979,7 @@ export const Receptionist: React.FC = () => {
                     <div className="md:hidden space-y-3.5">
                       <AnimatePresence initial={false}>
                         {patients.map((pt) => {
-                          const statusColor = pt.status === 'calling' 
+                          const statusColor = pt.status === 'calling'
                             ? 'border-indigo-400 bg-indigo-50/10'
                             : pt.priority === 'urgent' && pt.status === 'waiting'
                               ? 'border-rose-450 bg-rose-500/5'
@@ -1008,10 +991,10 @@ export const Receptionist: React.FC = () => {
                             <motion.div
                               key={pt.id}
                               initial={{ opacity: 0, scale: 0.98 }}
-                              animate={{ 
-                                opacity: 1, 
+                              animate={{
+                                opacity: 1,
                                 scale: 1,
-                                backgroundColor: highlightedId === pt.id 
+                                backgroundColor: highlightedId === pt.id
                                   ? (darkMode ? 'rgba(37, 99, 235, 0.15)' : 'rgba(219, 234, 254, 0.4)')
                                   : 'transparent'
                               }}
@@ -1105,11 +1088,10 @@ export const Receptionist: React.FC = () => {
 
           {/* COLUMN 3 ACTIONS: RECENT ACTIVITY LOGS & QR POSTER - Spans 4 Columns */}
           <div className="lg:col-span-4 flex flex-col gap-6">
-            
+
             {/* Recent Activity Card */}
-            <div className={`p-5 rounded-3xl border text-left flex-1 flex flex-col ${
-              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-            }`} id="RecentActivityCard">
+            <div className={`p-5 rounded-3xl border text-left flex-1 flex flex-col ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+              }`} id="RecentActivityCard">
               <h4 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2 pb-2 border-b border-slate-150 dark:border-slate-800">
                 <Activity className="w-4 h-4 text-orange-500" />
                 <span>Station Desktop activity Log</span>
@@ -1119,7 +1101,7 @@ export const Receptionist: React.FC = () => {
               <div className="flex-1 flex flex-col justify-start">
                 <div className="space-y-3.5 my-auto max-h-[220px] overflow-y-auto pr-1">
                   {activities.map((act) => {
-                    const iconColor = act.type === 'add' 
+                    const iconColor = act.type === 'add'
                       ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/30'
                       : act.type === 'call'
                         ? 'bg-blue-500/10 text-blue-500 border border-blue-500/30'
@@ -1155,9 +1137,8 @@ export const Receptionist: React.FC = () => {
             <InstallAppCard />
 
             {/* QR Poster Card */}
-            <div className={`p-5 rounded-3xl border text-left ${
-              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-202 shadow-sm'
-            }`} id="QRGenerationCard">
+            <div className={`p-5 rounded-3xl border text-left ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-202 shadow-sm'
+              }`} id="QRGenerationCard">
               <h4 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 flex items-center gap-2 pb-2 border-b border-slate-150 dark:border-slate-800">
                 <QrCode className="w-4 h-4 text-emerald-500" />
                 <span>Station Standby Poster URL</span>
@@ -1169,7 +1150,7 @@ export const Receptionist: React.FC = () => {
 
               {/* QR representation layout */}
               <div className="p-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-850 flex items-center justify-center max-w-[125px] mx-auto mb-3 shadow-inner relative group">
-                <img 
+                <img
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(window.location.origin + '/patient')}`}
                   alt="Desk Poster QR"
                   className="w-24 h-24 block rounded-lg select-none"
@@ -1180,22 +1161,20 @@ export const Receptionist: React.FC = () => {
                 <button
                   onClick={handlePrintToken}
                   disabled={printLoading}
-                  className={`w-full py-2.5 px-3 rounded-xl border text-[10.5px] font-extrabold tracking-wide uppercase transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                    printLoading
+                  className={`w-full py-2.5 px-3 rounded-xl border text-[10.5px] font-extrabold tracking-wide uppercase transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${printLoading
                       ? 'opacity-65'
-                      : darkMode 
-                        ? 'border-slate-800 hover:bg-slate-950 text-white shadow-inner' 
+                      : darkMode
+                        ? 'border-slate-800 hover:bg-slate-950 text-white shadow-inner'
                         : 'border-slate-250 hover:bg-slate-100 text-slate-700 shadow-xs'
-                  }`}
+                    }`}
                 >
                   <Printer className={`w-3.5 h-3.5 text-amber-500 ${printLoading ? 'animate-spin' : ''}`} />
                   <span>{printLoading ? 'Printing...' : 'Print Last Registered Slip'}</span>
                 </button>
               )}
               {!successRegisteredPatient && (
-                <p className={`text-center text-[10px] py-2 ${
-                  darkMode ? 'text-slate-500' : 'text-slate-400'
-                }`}>
+                <p className={`text-center text-[10px] py-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'
+                  }`}>
                   Register a patient to print their ticket slip.
                 </p>
               )}
@@ -1214,21 +1193,20 @@ export const Receptionist: React.FC = () => {
       */}
       <AnimatePresence>
         {successRegisteredPatient && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 z-55 overflow-y-auto selection:bg-blue-500/35 font-sans"
             id="success-receipt-modal"
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
               transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-              className={`w-full max-w-[400px] rounded-3xl overflow-hidden shadow-2xl relative border ${
-                darkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100'
-              }`}
+              className={`w-full max-w-[400px] rounded-3xl overflow-hidden shadow-2xl relative border ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100'
+                }`}
             >
               {/* Receipt Header Style */}
               <div className="bg-gradient-to-r from-blue-600 to-indigo-750 text-white p-5 text-center relative">
@@ -1257,11 +1235,10 @@ export const Receptionist: React.FC = () => {
 
               {/* Receipt body */}
               <div className="p-5 space-y-4">
-                
+
                 {/* Patient Information Section */}
-                <div className={`p-4 rounded-2.5xl border ${
-                  darkMode ? 'bg-slate-905/65 border-slate-800' : 'bg-slate-50 border-slate-150'
-                }`}>
+                <div className={`p-4 rounded-2.5xl border ${darkMode ? 'bg-slate-905/65 border-slate-800' : 'bg-slate-50 border-slate-150'
+                  }`}>
                   <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400">
                     Patient Credentials
                   </span>
@@ -1284,16 +1261,15 @@ export const Receptionist: React.FC = () => {
                 </div>
 
                 {/* Tracking & QR Code Section */}
-                <div className={`p-4 rounded-2.5xl border text-center ${
-                  darkMode ? 'bg-slate-905/40 border-slate-800' : 'bg-white border-slate-150/80 shadow-xs'
-                }`}>
+                <div className={`p-4 rounded-2.5xl border text-center ${darkMode ? 'bg-slate-905/40 border-slate-800' : 'bg-white border-slate-150/80 shadow-xs'
+                  }`}>
                   <span className="text-[9.5px] uppercase tracking-wider font-black text-slate-500 dark:text-slate-400 block mb-2 text-center">
                     QUEUING STATUS TRACKER (QR)
                   </span>
 
                   {/* QR Code Prominent representation */}
                   <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-205 dark:border-slate-800 w-[200px] h-[200px] mx-auto shadow-inner relative group overflow-hidden">
-                    
+
                     {/* Corner viewfinder guides */}
                     <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-blue-500 rounded-tl-[3px]" />
                     <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-blue-500 rounded-tr-[3px]" />
@@ -1303,7 +1279,7 @@ export const Receptionist: React.FC = () => {
                     {/* Laser scanning line effect */}
                     <div className="absolute inset-x-2 h-[2px] bg-blue-505/50 shadow-[0_0_8px_rgb(59,130,246)] animate-bounce top-[40%] pointer-events-none" />
 
-                    <img 
+                    <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
                         window.location.origin + '/patient/' + (customQrText || successRegisteredPatient.ticketNumber)
                       )}`}
@@ -1328,11 +1304,11 @@ export const Receptionist: React.FC = () => {
 
                 {/* Customize QR Input toggle */}
                 <div className="text-center">
-                  <button 
+                  <button
                     type="button"
                     onClick={() => {
                       setShowCustomQrInput(!showCustomQrInput);
-                      if(!customQrText) setCustomQrText(successRegisteredPatient.ticketNumber);
+                      if (!customQrText) setCustomQrText(successRegisteredPatient.ticketNumber);
                     }}
                     className="text-[10px] font-bold text-slate-400 hover:text-blue-550 underline cursor-pointer"
                   >
@@ -1341,22 +1317,21 @@ export const Receptionist: React.FC = () => {
 
                   <AnimatePresence>
                     {showCustomQrInput && (
-                      <motion.div 
+                      <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
                         className="mt-2 max-w-[280px] mx-auto flex items-center gap-1.5"
                       >
-                        <input 
+                        <input
                           type="text"
                           placeholder="Customize QR token target..."
                           value={customQrText}
                           onChange={(e) => setCustomQrText(e.target.value)}
-                          className={`flex-1 px-2 py-1.5 text-[10px] rounded-lg border focus:outline-hidden ${
-                            darkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-205 text-slate-800'
-                          }`}
+                          className={`flex-1 px-2 py-1.5 text-[10px] rounded-lg border focus:outline-hidden ${darkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-205 text-slate-800'
+                            }`}
                         />
-                        <button 
+                        <button
                           type="button"
                           onClick={() => {
                             setCustomQrText(successRegisteredPatient.ticketNumber);
@@ -1377,13 +1352,12 @@ export const Receptionist: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleCopyLink(`${window.location.origin}/patient/${customQrText || successRegisteredPatient.ticketNumber}`)}
-                    className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
-                      copiedLink 
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 font-bold' 
-                        : darkMode 
-                          ? 'bg-slate-900 border-slate-800 hover:border-slate-705 text-slate-305' 
+                    className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${copiedLink
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 font-bold'
+                        : darkMode
+                          ? 'bg-slate-900 border-slate-800 hover:border-slate-705 text-slate-305'
                           : 'bg-slate-55/80 border-slate-200 hover:bg-slate-100 text-slate-700'
-                    }`}
+                      }`}
                   >
                     {copiedLink ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4 text-blue-500" />}
                     <div className="text-[10px]">
@@ -1396,11 +1370,10 @@ export const Receptionist: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleShareLink(`${window.location.origin}/patient/${customQrText || successRegisteredPatient.ticketNumber}`, successRegisteredPatient.name, successRegisteredPatient.ticketNumber)}
-                    className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
-                      darkMode 
-                        ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300' 
+                    className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${darkMode
+                        ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300'
                         : 'bg-slate-55/80 border-slate-200 hover:bg-slate-105 text-slate-700'
-                    }`}
+                      }`}
                   >
                     <Share2 className="w-4 h-4 text-indigo-500" />
                     <div className="text-[10px]">
@@ -1415,11 +1388,10 @@ export const Receptionist: React.FC = () => {
                     onClick={() => handleDownloadQr(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
                       window.location.origin + '/patient/' + (customQrText || successRegisteredPatient.ticketNumber)
                     )}`, successRegisteredPatient.ticketNumber)}
-                    className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
-                      darkMode 
-                        ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300' 
+                    className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${darkMode
+                        ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300'
                         : 'bg-slate-55/80 border-slate-200 hover:bg-slate-105 text-slate-700'
-                    }`}
+                      }`}
                   >
                     <Download className="w-4 h-4 text-emerald-500" />
                     <div className="text-[10px]">
@@ -1433,13 +1405,12 @@ export const Receptionist: React.FC = () => {
                     type="button"
                     onClick={handlePrintToken}
                     disabled={printLoading}
-                    className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
-                      printLoading 
-                        ? 'opacity-65' 
-                        : darkMode 
-                          ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-305' 
+                    className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${printLoading
+                        ? 'opacity-65'
+                        : darkMode
+                          ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-305'
                           : 'bg-slate-55/80 border-slate-200 hover:bg-slate-105 text-slate-700'
-                    }`}
+                      }`}
                   >
                     <Printer className={`w-4 h-4 text-amber-500 ${printLoading ? 'animate-spin' : ''}`} />
                     <div className="text-[10px]">
@@ -1484,7 +1455,7 @@ export const Receptionist: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* 
         -----------------------------------------
         5. FLOATING QUICK-CALL TRIGGER BUTTON (Desktop hidden, Mobile / Tablet absolute assistance)
@@ -1508,13 +1479,12 @@ export const Receptionist: React.FC = () => {
           }}
           onClick={handleCallNextTicket}
           disabled={waitingCount === 0}
-          className={`flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-xl cursor-pointer select-none border border-blue-405/20 ${
-            waitingCount === 0 ? 'opacity-40 saturate-50 cursor-not-allowed' : ''
-          }`}
+          className={`flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-xl cursor-pointer select-none border border-blue-405/20 ${waitingCount === 0 ? 'opacity-40 saturate-50 cursor-not-allowed' : ''
+            }`}
           title="Call Next Patient in Queue"
         >
           <Volume2 className="w-6 h-6 animate-pulse-slow text-white" />
-          
+
           {waitingCount > 0 && (
             <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-extrabold text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-800 animate-bounce">
               {waitingCount}
