@@ -10,14 +10,96 @@ export default defineConfig(() => {
       react(),
       tailwindcss(),
       VitePWA({
-        strategies: 'injectManifest',
-        srcDir: 'src',
-        filename: 'sw.ts',
-        injectRegister: false,
-        manifest: false,
-        includeAssets: ['pwa-icon.svg', 'pwa-icon-192.png', 'pwa-icon-512.png', 'manifest.webmanifest'],
-        injectManifest: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        strategies: 'generateSW',
+        registerType: 'prompt',
+        injectRegister: 'auto',
+        includeAssets: ['pwa-icon.svg', 'pwa-icon-192.png', 'pwa-icon-512.png'],
+        manifest: {
+          name: "Queue Cure '26 - Clinic Standby",
+          short_name: "Queue Cure",
+          description: "Clinic triage and waiting room queue management for patients and reception staff.",
+          id: "/",
+          start_url: "/",
+          scope: "/",
+          display: "standalone",
+          display_override: ["window-controls-overlay", "standalone", "minimal-ui"],
+          orientation: "portrait",
+          background_color: "#f8fafc",
+          theme_color: "#0d9488",
+          categories: ["health", "medical", "productivity"],
+          icons: [
+            {
+              src: "/pwa-icon-192.png",
+              sizes: "192x192",
+              type: "image/png",
+              purpose: "any maskable"
+            },
+            {
+              src: "/pwa-icon-512.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "any maskable"
+            },
+            {
+              src: "/pwa-icon.svg",
+              sizes: "any",
+              type: "image/svg+xml",
+              purpose: "any maskable"
+            }
+          ],
+          shortcuts: [
+            {
+              name: "Patient Tracker",
+              short_name: "Patient",
+              url: "/patient",
+              icons: [
+                {
+                  src: "/pwa-icon-192.png",
+                  sizes: "192x192",
+                  type: "image/png"
+                }
+              ]
+            },
+            {
+              name: "Reception Desk",
+              short_name: "Reception",
+              url: "/reception-login",
+              icons: [
+                {
+                  src: "/pwa-icon-192.png",
+                  sizes: "192x192",
+                  type: "image/png"
+                }
+              ]
+            },
+            {
+              name: "Waiting Display",
+              short_name: "Display",
+              url: "/display",
+              icons: [
+                {
+                  src: "/pwa-icon-192.png",
+                  sizes: "192x192",
+                  type: "image/png"
+                }
+              ]
+            }
+          ]
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api\//, /^\/socket\.io\//],
+          runtimeCaching: [
+            {
+              urlPattern: /^\/api\//,
+              handler: 'NetworkOnly',
+            },
+            {
+              urlPattern: /^\/socket\.io\//,
+              handler: 'NetworkOnly',
+            }
+          ]
         },
         devOptions: {
           enabled: true,
@@ -31,10 +113,7 @@ export default defineConfig(() => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };
