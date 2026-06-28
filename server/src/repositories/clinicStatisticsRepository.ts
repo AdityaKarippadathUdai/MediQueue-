@@ -1,4 +1,4 @@
-import { ClinicStatistics, IClinicStatistics } from '../models/ClinicStatistics';
+import { ClinicStatistics, IClinicStatistics, ClinicStatisticsDocument } from '../models/ClinicStatistics';
 
 // ─────────────────────────────────────────────
 // Repository Class
@@ -14,7 +14,7 @@ export class ClinicStatisticsRepository {
   async getOrInitializeForToday(
     departmentCode: string = this.DEFAULT_DEPT,
     today: string
-  ): Promise<IClinicStatistics> {
+  ): Promise<ClinicStatisticsDocument> {
     return ClinicStatistics.findOneAndUpdate(
       { date: today, departmentCode },
       {
@@ -25,7 +25,7 @@ export class ClinicStatisticsRepository {
         },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
-    ).exec() as Promise<IClinicStatistics>;
+    ).exec() as Promise<ClinicStatisticsDocument>;
   }
 
   /**
@@ -52,7 +52,7 @@ export class ClinicStatisticsRepository {
     departmentCode: string = this.DEFAULT_DEPT,
     today: string,
     consultationMinutes: number
-  ): Promise<IClinicStatistics> {
+  ): Promise<ClinicStatisticsDocument> {
     // Step 1: Increment counts atomically
     const stats = await ClinicStatistics.findOneAndUpdate(
       { date: today, departmentCode },
@@ -63,7 +63,7 @@ export class ClinicStatisticsRepository {
         },
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
-    ).exec() as IClinicStatistics;
+    ).exec() as ClinicStatisticsDocument;
 
     // Step 2: Compute and persist rolling average
     const newAvg =
@@ -75,7 +75,7 @@ export class ClinicStatisticsRepository {
       { date: today, departmentCode },
       { $set: { averageActualConsultationTime: newAvg } },
       { new: true }
-    ).exec() as Promise<IClinicStatistics>;
+    ).exec() as Promise<ClinicStatisticsDocument>;
   }
 
   /**

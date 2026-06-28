@@ -1,5 +1,5 @@
-import { Patient, IPatient, PatientStatus } from '../models/Patient';
-import { Types } from 'mongoose';
+import { Patient, IPatient, PatientStatus, PatientDocument } from '../models/Patient';
+import { Types, UpdateQuery } from 'mongoose';
 
 // ─────────────────────────────────────────────
 // Input Interfaces
@@ -28,7 +28,7 @@ export class PatientRepository {
   /**
    * Create a new patient record for today's queue.
    */
-  async create(input: CreatePatientInput): Promise<IPatient> {
+  async create(input: CreatePatientInput): Promise<PatientDocument> {
     const patient = new Patient({
       name: input.name,
       phone: input.phone || '000-000-0000',
@@ -95,24 +95,24 @@ export class PatientRepository {
    * Returns the updated document.
    */
   async updateStatus(id: string, input: UpdatePatientStatusInput): Promise<IPatient | null> {
-    const updateFields: Partial<IPatient> = {
-      status: input.status,
+    const updateFields: UpdateQuery<IPatient> = {
+      $set: { status: input.status },
     };
 
     if (input.assignedRoom) {
-      updateFields.assignedRoom = input.assignedRoom;
+      updateFields.$set!.assignedRoom = input.assignedRoom;
     }
 
     // Set calledAt and completedAt based on the status transition
     if (input.status === 'active') {
-      updateFields.calledAt = new Date();
+      updateFields.$set!.calledAt = new Date();
     } else if (input.status === 'completed' || input.status === 'no-show') {
-      updateFields.completedAt = new Date();
+      updateFields.$set!.completedAt = new Date();
     }
 
     return Patient.findByIdAndUpdate(
       new Types.ObjectId(id),
-      { $set: updateFields },
+      updateFields,
       { new: true, runValidators: true }
     )
       .lean({ virtuals: true })

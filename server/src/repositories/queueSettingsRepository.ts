@@ -1,4 +1,4 @@
-import { QueueSettings, IQueueSettings } from '../models/QueueSettings';
+import { QueueSettings, IQueueSettings, QueueSettingsDocument } from '../models/QueueSettings';
 
 // ─────────────────────────────────────────────
 // Repository Class
@@ -15,7 +15,7 @@ export class QueueSettingsRepository {
   async getOrInitialize(
     departmentCode: string = this.DEFAULT_DEPT,
     today: string
-  ): Promise<IQueueSettings> {
+  ): Promise<QueueSettingsDocument> {
     let settings = await QueueSettings.findOneAndUpdate(
       { departmentCode },
       {
@@ -87,7 +87,7 @@ export class QueueSettingsRepository {
   async setCurrentToken(
     departmentCode: string = this.DEFAULT_DEPT,
     token: number
-  ): Promise<IQueueSettings | null> {
+  ): Promise<QueueSettingsDocument | null> {
     return QueueSettings.findOneAndUpdate(
       { departmentCode },
       { $set: { currentToken: token } },
@@ -102,7 +102,7 @@ export class QueueSettingsRepository {
   async updateAverageConsultationTime(
     departmentCode: string = this.DEFAULT_DEPT,
     minutes: number
-  ): Promise<IQueueSettings | null> {
+  ): Promise<QueueSettingsDocument | null> {
     return QueueSettings.findOneAndUpdate(
       { departmentCode },
       { $set: { averageConsultationTime: minutes } },
@@ -116,7 +116,7 @@ export class QueueSettingsRepository {
   async setQueueOpen(
     departmentCode: string = this.DEFAULT_DEPT,
     isOpen: boolean
-  ): Promise<IQueueSettings | null> {
+  ): Promise<QueueSettingsDocument | null> {
     return QueueSettings.findOneAndUpdate(
       { departmentCode },
       { $set: { isQueueOpen: isOpen } },
