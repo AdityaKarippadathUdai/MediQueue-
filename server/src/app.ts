@@ -17,10 +17,14 @@ app.use(helmet());
 app.use(
   cors({
     origin: config.corsOrigin,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
+
+// Handle CORS preflight
+app.options('*', cors());
 
 // Register custom request logger middleware globally
 app.use(loggingMiddleware);
