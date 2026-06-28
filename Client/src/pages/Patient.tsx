@@ -32,6 +32,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { PatientNotFound } from '../components/PatientNotFound';
 import { getPatient } from '../services/api';
+import { QRScannerModal } from '../components/qr/QRScannerModal';
 
 export const Patient: React.FC = () => {
   // Support both :tokenId and :token route param variables for absolute safety and backward compatibility
@@ -66,11 +67,8 @@ export const Patient: React.FC = () => {
   // Recent tokens list
   const [recentTokens, setRecentTokens] = useState<string[]>([]);
 
-  // Camera Scanner modal / viewfinder state
+  // Real QR Scanner modal state
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [scannerState, setScannerState] = useState<'idle' | 'permission_request' | 'loading' | 'active' | 'success' | 'error' | 'denied'>('idle');
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Load history from localStorage on mount (no mock token seeds)
   useEffect(() => {
@@ -235,50 +233,6 @@ export const Patient: React.FC = () => {
   const handleQuickReopen = (tk: string) => {
     navigate(`/patient/${tk}`);
   };
-
-  // Real WebRTC Camera & High-fidelity Viewfinder Simulation Flow
-  const startCamera = async () => {
-    setScannerState('permission_request');
-    
-    // Simulate iOS / Android style authorization prompt
-    setTimeout(async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
-        });
-        
-        setCameraStream(stream);
-        setScannerState('loading');
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-
-        // Viewfinder loading presentation
-        setTimeout(() => {
-          setScannerState('active');
-        }, 1000);
-
-      } catch (err: any) {
-        console.warn('Real camera feed error or block. Fallback to simulator:', err);
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setScannerState('denied');
-        } else {
-          setScannerState('error');
-        }
-      }
-    }, 800);
-  };
-
-  const closeCameraScanner = () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      setCameraStream(null);
-    }
-    setIsScannerOpen(false);
-    setScannerState('idle');
-  };
-
 
   // Calculations for display times
   const getSimulatedEstimatedCallTime = () => {
@@ -845,7 +799,6 @@ export const Patient: React.FC = () => {
               whileTap={{ scale: 0.98 }}
               onClick={() => {
                 setIsScannerOpen(true);
-                startCamera();
               }}
               className={`w-full py-3 rounded-2xl border font-bold text-xs mt-3.5 flex items-center justify-center gap-2 cursor-pointer transition-colors ${
                 darkMode
@@ -894,130 +847,13 @@ export const Patient: React.FC = () => {
       )}
 
       {/* -----------------------------------------------------
-          MODAL: CAMERA VIEWPORT SCENE (WITH DIRECT TEST SCAN CLICKS)
+          MODAL: REAL QR SCANNER
           ----------------------------------------------------- */}
-      <AnimatePresence>
-        {isScannerOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-md flex flex-col justify-between p-6 select-none"
-            id="camera-viewfinder-overlay"
-          >
-            {/* Viewfinder header */}
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[9px] uppercase tracking-widest text-slate-400 font-bold">
-                Triage Scanner Viewport
-              </span>
-              <button
-                onClick={closeCameraScanner}
-                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="Cancel Scan"
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Viewfinder frame */}
-            <div className="flex-1 flex flex-col justify-center items-center my-6">
-              <div className="relative w-full max-w-[280px] aspect-square rounded-3xl overflow-hidden border-2 border-white/25 shadow-2xl bg-black">
-                
-                {/* Scanner Frame View finder targets */}
-                <div className="absolute top-4 left-4 w-6 h-6 border-t-4 border-l-4 border-blue-500 rounded-tl-md z-20" />
-                <div className="absolute top-4 right-4 w-6 h-6 border-t-4 border-r-4 border-blue-500 rounded-tr-md z-20" />
-                <div className="absolute bottom-4 left-4 w-6 h-6 border-b-4 border-l-4 border-blue-500 rounded-bl-md z-20" />
-                <div className="absolute bottom-4 right-4 w-6 h-6 border-b-4 border-r-4 border-blue-500 rounded-br-md z-20" />
-
-                {/* Scan Animation laser effect */}
-                {scannerState === 'active' && (
-                  <div className="absolute inset-x-0 h-[3px] bg-blue-500 shadow-[0_0_15px_#3b82f6] z-20 top-[40%] animate-bounce" />
-                )}
-
-                {/* HTML5 video tag */}
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={`w-full h-full object-cover transition-opacity duration-300 ${
-                    scannerState === 'active' ? 'opacity-70' : 'opacity-0'
-                  }`}
-                />
-
-                {/* Overlay Text / Graphics for status */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-5 text-center z-10 bg-black/45">
-                  {scannerState === 'permission_request' && (
-                    <div className="space-y-3 animate-pulse">
-                      <div className="p-3.5 rounded-2xl bg-blue-500/20 text-blue-400 inline-flex">
-                        <Camera className="w-6 h-6" />
-                      </div>
-                      <p className="text-white font-bold text-xs">Authorize Camera Access</p>
-                    </div>
-                  )}
-
-                  {scannerState === 'loading' && (
-                    <div className="space-y-2">
-                      <RefreshCw className="w-5 h-5 text-blue-400 animate-spin mx-auto" />
-                      <p className="text-white font-bold text-[11px] uppercase tracking-wider">Acquiring feed...</p>
-                    </div>
-                  )}
-
-                  {scannerState === 'denied' && (
-                    <div className="space-y-3 p-2">
-                      <XCircle className="w-7 h-7 text-rose-500 mx-auto" />
-                      <p className="text-white font-bold text-xs">Authorization Blocked</p>
-                      <p className="text-slate-400 text-[9.5px]">
-                        Please check browser settings or use fallback buttons below!
-                      </p>
-                    </div>
-                  )}
-
-                  {scannerState === 'active' && (
-                    <div className="absolute bottom-4 left-0 right-0 text-center text-white font-bold text-[9px] tracking-widest uppercase">
-                      Center Ticket barcode to capture
-                    </div>
-                  )}
-
-                  {scannerState === 'success' && (
-                    <motion.div 
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="space-y-2"
-                    >
-                      <div className="p-3 rounded-full bg-emerald-500 text-white inline-flex">
-                        <Check className="w-6 h-6" />
-                      </div>
-                      <p className="text-emerald-400 font-bold text-xs uppercase tracking-wider">Ticket Detected</p>
-                      <p className="text-white font-bold text-sm">Directing Live Status...</p>
-                    </motion.div>
-                  )}
-
-                  {scannerState === 'error' && (
-                    <div className="space-y-2 p-2">
-                      <XCircle className="w-7 h-7 text-rose-400 mx-auto" />
-                      <p className="text-white font-bold text-xs">Camera feed unavailable</p>
-                      <p className="text-slate-405 text-[9px] leading-relaxed">
-                        Could not access camera. Please check browser permissions and try again.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            </div>
-
-            <div className="text-center">
-              <button
-                onClick={closeCameraScanner}
-                className="text-xs text-slate-400 hover:text-white underline cursor-pointer font-semibold"
-              >
-                Go back to manual input tracker
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <QRScannerModal 
+        isOpen={isScannerOpen} 
+        onClose={() => setIsScannerOpen(false)} 
+        onSuccess={(tk) => navigate(`/patient/${tk}`)} 
+      />
 
     </div>
   );
