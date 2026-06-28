@@ -73,11 +73,26 @@ const RootRouter: React.FC = () => {
 };
 
 export const AppRouter: React.FC = () => {
-  const { toasts, removeToast } = useQueue();
+  const { toasts, removeToast, isOnline } = useQueue();
 
   return (
     <BrowserRouter>
       <RootRouter />
+
+      {/* Offline Notice Banner */}
+      <AnimatePresence>
+        {!isOnline && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-0 left-0 right-0 z-[100] bg-rose-600 text-white p-2 text-center text-xs font-bold shadow-md flex justify-center items-center gap-2"
+          >
+            <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+            You are currently offline. Realtime updates are paused.
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Global animated floating toast notification drawer */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-55 flex flex-col gap-2 w-[calc(100%-2rem)] max-w-[380px] pointer-events-none">
